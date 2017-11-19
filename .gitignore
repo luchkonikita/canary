@@ -1,0 +1,7 @@
+.vscode
+debug
+storage.db
+test_support/test_storage.db
+debug.test
+canary
+.DS_Store
