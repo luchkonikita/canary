@@ -19,7 +19,10 @@ _The more detailed decription is coming soon..._
 
 ## Installation
 
-_Coming soon..._
+There are no releases with a ready binary yet,
+as the project is in active development and is not stable.
+
+If you want to build it locally just clone the repo and do `go build` from the root.
 
 ## Usage
 
