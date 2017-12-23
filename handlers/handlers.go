@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 
@@ -15,15 +16,31 @@ import (
 // Handler - a function returning router compatible handler
 type Handler func(db *storm.DB) httprouter.Handle
 
+// NewRouter - defines all the routes and corresponding handlers
+func NewRouter(db *storm.DB) *httprouter.Router {
+	router := httprouter.New()
+
+	// Sitemaps
+	router.GET("/sitemaps", GetSitemaps(db))
+	router.POST("/sitemaps", CreateSitemap(db))
+	router.DELETE("/sitemaps/:sitemapId", DeleteSitemap(db))
+
+	// Crawlings
+	router.GET("/crawlings", GetCrawlings(db))
+	router.POST("/crawlings", CreateCrawling(db))
+	router.DELETE("/crawlings/:crawlingId", DeleteCrawling(db))
+
+	// Page results
+	router.GET("/page_results", GetPageResults(db))
+
+	return router
+}
+
 // GetSitemaps - returns a list of all sitemaps in the database via `GET /sitemaps`
 func GetSitemaps(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		setHeaders(rw)
-		encoder := json.NewEncoder(rw)
-
-		var sitemaps []store.Sitemap
-		db.All(&sitemaps)
-		encoder.Encode(sitemaps)
+		sitemaps := store.GetSitemaps(db)
+		renderOK(rw, sitemaps)
 	}
 }
 
@@ -65,16 +82,13 @@ func DeleteSitemap(db *storm.DB) httprouter.Handle {
 // GetCrawlings - returns a list of crawlings with results via `GET /sitemaps/:sitemapId/crawlings`
 func GetCrawlings(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		sitemapID, _ := strconv.Atoi(p.ByName("sitemapId"))
-		sitemap, err := store.GetSitemap(db, sitemapID)
+		f := &store.CrawlingsFilter{}
 
-		if err != nil {
-			renderNotFound(rw, err)
-			return
+		if err := decodeBody(r, f); err != nil {
+			renderBadRequest(rw, err)
 		}
 
-		crawlings := store.GetCrawlings(db, sitemap)
-
+		crawlings := f.Query(db)
 		renderOK(rw, crawlings)
 	}
 }
@@ -84,8 +98,15 @@ func GetCrawlings(db *storm.DB) httprouter.Handle {
 // These results are going to be processed separately by background worker.
 func CreateCrawling(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		sitemapID, _ := strconv.Atoi(p.ByName("sitemapId"))
-		sitemap, err := store.GetSitemap(db, sitemapID)
+		data := &struct {
+			SitemapID int `json:"sitemap_id"`
+		}{}
+
+		if err := decodeBody(r, data); err != nil {
+			renderBadRequest(rw, err)
+		}
+
+		sitemap, err := store.GetSitemap(db, data.SitemapID)
 		if err != nil {
 			renderNotFound(rw, err)
 			return
@@ -97,13 +118,14 @@ func CreateCrawling(db *storm.DB) httprouter.Handle {
 			return
 		}
 
-		err = store.CreateCrawling(db, sitemap, urls)
+		crawling, err := store.CreateCrawling(db, sitemap, urls)
 
 		if err != nil {
 			renderBadRequest(rw, err)
 		} else {
-			renderOK(rw, map[string]string{
-				"status": "Created",
+			renderOK(rw, map[string]interface{}{
+				"status":   "Created",
+				"crawling": crawling,
 			})
 		}
 	}
@@ -113,9 +135,8 @@ func CreateCrawling(db *storm.DB) httprouter.Handle {
 // If the crawling is running, this will stop it.
 func DeleteCrawling(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		sitemapID, _ := strconv.Atoi(p.ByName("sitemapId"))
 		crawlingID, _ := strconv.Atoi(p.ByName("crawlingId"))
-		err := store.DeleteCrawling(db, sitemapID, crawlingID)
+		err := store.DeleteCrawling(db, crawlingID)
 
 		if err != nil {
 			renderBadRequest(rw, err)
@@ -130,17 +151,24 @@ func DeleteCrawling(db *storm.DB) httprouter.Handle {
 // GetPageResults - loads page results for a crawling via `GET /crawlings/:crawlingId/page_results`
 func GetPageResults(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		crawlingID, _ := strconv.Atoi(p.ByName("crawlingId"))
-		err := db.One("ID", crawlingID, &store.Crawling{})
+		f := &store.PageResultsFilter{}
 
-		if err != nil {
-			renderNotFound(rw, err)
-		} else {
-			var pageResults []store.PageResult
-			db.Find("CrawlingID", crawlingID, &pageResults)
-			renderOK(rw, pageResults)
+		if err := decodeBody(r, f); err != nil {
+			renderBadRequest(rw, err)
 		}
+
+		pageResults := f.Query(db)
+		renderOK(rw, pageResults)
 	}
+}
+
+func decodeBody(r *http.Request, to interface{}) error {
+	body, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, to)
 }
 
 func renderOK(rw http.ResponseWriter, data interface{}) {

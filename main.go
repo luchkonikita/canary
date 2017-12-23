@@ -4,13 +4,15 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/luchkonikita/canary/router"
+	"github.com/rs/cors"
+
+	"github.com/luchkonikita/canary/handlers"
 	"github.com/luchkonikita/canary/store"
 	"github.com/luchkonikita/canary/workers"
 )
 
 var (
-	port = "8080"
+	port = "4000"
 )
 
 func main() {
@@ -20,7 +22,12 @@ func main() {
 	go workers.Start(db)
 
 	log.Printf("Listening on the port: %s", port)
-	router := router.NewRouter(db)
+	router := handlers.NewRouter(db)
 
-	http.ListenAndServe(":"+port, router)
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:8080"},
+		AllowCredentials: true,
+	})
+	handler := corsMiddleware.Handler(router)
+	http.ListenAndServe(":"+port, handler)
 }

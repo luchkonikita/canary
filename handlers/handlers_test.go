@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luchkonikita/canary/store"
 	ts "github.com/luchkonikita/canary/test_support"
@@ -13,232 +15,178 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-var emptyBody = map[string]string{}
-var emptyParams = map[string]string{}
+func requestCase(testFn func(db *storm.DB, router *httprouter.Router)) {
+	db := store.NewDB(ts.GetTestDBName(), true)
+	defer db.Close()
+	router := NewRouter(db)
+	testFn(db, router)
+}
 
-type paramsMap map[string]string
-type curriedRequest func(params map[string]string) *httptest.ResponseRecorder
-
-func curryRequest(handlerFn Handler, db *storm.DB) curriedRequest {
-	return func(params map[string]string) *httptest.ResponseRecorder {
-		recorder := httptest.NewRecorder()
-		request := ts.NewTestRequest(emptyBody)
-		routerParams := httprouter.Params{}
-		for key, value := range params {
-			routerParams = append(routerParams, httprouter.Param{Key: key, Value: value})
-		}
-		handlerFn(db)(recorder, request, routerParams)
-		return recorder
-	}
+func request(router *httprouter.Router, verb, path string, body string) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	req, _ := http.NewRequest(verb, path, strings.NewReader(body))
+	router.ServeHTTP(rr, req)
+	return rr
 }
 
 func TestGetSitemaps(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		rr := request(router, "GET", "/sitemaps", "")
 
-	doRequest := curryRequest(GetSitemaps, db)
+		db.Save(&store.Sitemap{
+			Name: "The name",
+			URL:  "http://example.com",
+		})
 
-	db.Save(&store.Sitemap{
-		Name: "The name",
-		URL:  "http://example.com",
+		rr = request(router, "GET", "/sitemaps", "")
+		responseBody := rr.Body.String()
+
+		if !strings.Contains(responseBody, "\"Name\":\"The name\"") {
+			t.Error("Expected response to contain sitemap name")
+		}
+		if !strings.Contains(responseBody, "\"URL\":\"http://example.com\"") {
+			t.Error("Expected response to contain sitemap url")
+		}
 	})
-
-	if len(store.GetSitemaps(db)) != 1 {
-		t.Error("Database should contain 1 sitemap")
-	}
-
-	responseBody := doRequest(emptyParams).Body.String()
-
-	if !strings.Contains(responseBody, "\"Name\":\"The name\"") {
-		t.Error("Expected response to contain sitemap name")
-	}
-	if !strings.Contains(responseBody, "\"URL\":\"http://example.com\"") {
-		t.Error("Expected response to contain sitemap url")
-	}
 }
 
 func TestCreateSitemap(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
 
-	doRequest := func(params map[string]string) {
-		request := ts.NewTestRequest(params)
-		CreateSitemap(db)(httptest.NewRecorder(), request, httprouter.Params{})
-	}
+		rr := request(router, "POST", "/sitemaps", "")
 
-	blankParams := map[string]string{}
-	fullParams := map[string]string{
-		"name": "The Name",
-		"url":  "http://example/sitemap.xml",
-	}
+		ts.Assert(t, rr.Code == 422, "Expected to return an error")
+		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Sitemap should not be created with blank name")
 
-	ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
+		validParams := `{
+			"name": "The Name",
+			"url": "http://example/sitemap.xml"
+    }`
 
-	doRequest(blankParams)
-	ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Sitemap should not be created with blank name")
+		rr = request(router, "POST", "/sitemaps", validParams)
+		sitemaps := store.GetSitemaps(db)
+		ts.Assert(t, len(sitemaps) == 1, "CreateSitemap should create 1 sitemap")
+		ts.Assert(t, sitemaps[0].Name == "The Name", "Expected to create sitemap with name 'The name'")
+		ts.Assert(t, sitemaps[0].URL == "http://example/sitemap.xml", "Expected to create sitemap with url 'http://example/sitemap.xml'")
 
-	doRequest(fullParams)
-	sitemaps := store.GetSitemaps(db)
-	ts.Assert(t, len(sitemaps) == 1, "CreateSitemap should create 1 sitemap")
-	ts.Assert(t, sitemaps[0].Name == "The Name", "Expected to create sitemap with name 'The name'")
-	ts.Assert(t, sitemaps[0].URL == "http://example/sitemap.xml", "Expected to create sitemap with url 'http://example/sitemap.xml'")
-
-	doRequest(fullParams)
-	ts.Assert(t, len(store.GetSitemaps(db)) == 1, "CreateSitemap should not duplicate a sitemap")
+		rr = request(router, "POST", "/sitemaps", validParams)
+		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "CreateSitemap should not duplicate a sitemap")
+	})
 }
 
 func TestDeleteSitemap(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
 
-	doRequest := curryRequest(DeleteSitemap, db)
+		db.Save(&store.Sitemap{
+			Name: "The name",
+			URL:  "http://example.com",
+		})
 
-	ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
+		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
 
-	recorder := doRequest(paramsMap{"sitemapId": "1"})
+		rr := request(router, "DELETE", "/sitemaps/2", "")
+		ts.Assert(t, rr.Code == 404, "Expected to have 404 response")
+		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
 
-	ts.Assert(t, recorder.Code == 404, "Expected to have 404 response")
-
-	db.Save(&store.Sitemap{
-		Name: "The name",
-		URL:  "http://example.com",
+		rr = request(router, "DELETE", "/sitemaps/1", "")
+		ts.Assert(t, rr.Code == 200, "Expected to have 200 response")
+		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
 	})
-
-	ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
-
-	recorder = doRequest(paramsMap{"sitemapId": "1"})
-
-	ts.Assert(t, recorder.Code == 200, "Expected to have 200 response")
-	ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
 }
 
 func TestCreateCrawling(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		sitemapServer := ts.NewServer(ts.SitemapXML, 200)
+		defer sitemapServer.Close()
 
-	doRequest := curryRequest(CreateCrawling, db)
+		rr := request(router, "POST", "/crawlings", "")
+		ts.Assert(t, rr.Code == 400, "Expected to have 400 response")
 
-	recorder := doRequest(map[string]string{"sitemapId": "1"})
-	ts.Assert(t, recorder.Code == 404, "Expected to have 404 response")
+		rr = request(router, "POST", "/crawlings", `{"sitemap_id":1}`)
+		ts.Assert(t, rr.Code == 404, "Expected to have 404 response")
 
-	server := ts.NewServer(ts.SitemapXML, 200)
-	defer server.Close()
+		db.Save(&store.Sitemap{Name: "The name", URL: sitemapServer.URL})
+		db.Save(&store.Sitemap{Name: "Another name", URL: "NOT WORKING URL"})
 
-	db.Save(&store.Sitemap{
-		Name: "The name",
-		URL:  server.URL,
+		cCount, _ := db.Count(&store.Crawling{})
+		prCount, _ := db.Count(&store.PageResult{})
+
+		ts.Assert(t, cCount == 0, "Expected to DB to have 0 crawlings")
+		ts.Assert(t, prCount == 0, "Expected to DB to have 0 crawlings")
+
+		rr = request(router, "POST", "/crawlings", `{"sitemap_id":2}`)
+		ts.Assert(t, rr.Code == 400, "Expected to have 400 response when URL is broken")
+
+		rr = request(router, "POST", "/crawlings", `{"sitemap_id":1}`)
+		ts.Assert(t, rr.Code == 200, "Expected to have 200 response when URL is fine")
+
+		var crawling store.Crawling
+		var pageResults []store.PageResult
+		db.One("SitemapID", 1, &crawling)
+		db.All(&pageResults)
+
+		ts.Assert(t, crawling.Processed == false, "Expected to create a crawling")
+		ts.Assert(t, pageResults[0].CrawlingID == crawling.ID, "Expected to create first page result")
+		ts.Assert(t, pageResults[1].CrawlingID == crawling.ID, "Expected to create second page result")
 	})
-
-	db.Save(&store.Sitemap{
-		Name: "Another name",
-		URL:  "NOT WORKING URL",
-	})
-
-	recorder = doRequest(paramsMap{"sitemapId": "2"})
-	ts.Assert(t, recorder.Code == 400, "Expected to have 400 response when URL is broken")
-
-	recorder = doRequest(paramsMap{"sitemapId": "1"})
-	ts.Assert(t, recorder.Code == 200, "Expected to have 200 response when URL is fine")
-
-	var crawling store.Crawling
-	ts.Assert(t, db.One("SitemapID", 1, &crawling) == nil, "Expected to create crawling")
-
-	var pageResults []store.PageResult
-	db.All(&pageResults)
-
-	ts.Assert(t, pageResults[0].CrawlingID == crawling.ID, "Expected to create first page result")
-	ts.Assert(t, pageResults[1].CrawlingID == crawling.ID, "Expected to create second page result")
 }
 
 func TestGetCrawlings(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		db.Save(&store.Crawling{SitemapID: 1, Processed: false})
+		db.Save(&store.Crawling{SitemapID: 2, Processed: true})
 
-	sitemap := &store.Sitemap{
-		Name: "The name",
-		URL:  "http://example.com/sitemap.xml",
-	}
+		res := request(router, "GET", "/crawlings", `{"sitemap_id":1}`).Body.String()
+		ts.Assert(t, ts.ContainsJSON(res, "ID", "1"), "Expected response to contain only first crawling")
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "2"), "Expected response to contain only first crawling")
 
-	db.Save(sitemap)
-
-	store.CreateCrawling(db, sitemap, []string{
-		"http://example.com/first",
+		res = request(router, "GET", "/crawlings", `{"processed":"true"}`).Body.String()
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "1"), "Expected response to contain only second crawling")
+		ts.Assert(t, ts.ContainsJSON(res, "ID", "2"), "Expected response to contain only second crawling")
 	})
-
-	doRequest := curryRequest(GetCrawlings, db)
-
-	responseBody := doRequest(paramsMap{"sitemapId": "2"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "error", "\"not found\""), "Expected to return an error for unexisting crawling")
-
-	responseBody = doRequest(paramsMap{"sitemapId": "1"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "ID", "1"), "Expected response to contain crawlings IDs")
-	ts.Assert(t, ts.ContainsJSON(responseBody, "SitemapID", "1"), "Expected response to contain sitemap ID")
-	ts.Assert(t, ts.ContainsJSON(responseBody, "Processed", "false"), "Expected response to processed flag")
 }
 
 func TestDeleteCrawling(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		db.Save(&store.Crawling{SitemapID: 1, Processed: false, CreatedAt: time.Now()})
+		cCount, _ := db.Count(&store.Crawling{})
+		ts.Assert(t, cCount == 1, "Expected to DB to have 1 crawling")
 
-	sitemap := &store.Sitemap{
-		Name: "The name",
-		URL:  "http://example.com/sitemap.xml",
-	}
+		rr := request(router, "DELETE", "/crawlings/2", "")
+		ts.Assert(t, rr.Code == 400, "Expected response to have 404 status")
 
-	db.Save(sitemap)
+		cCount, _ = db.Count(&store.Crawling{})
+		ts.Assert(t, cCount == 1, "Expected to DB to have 1 crawling")
 
-	store.CreateCrawling(db, sitemap, []string{
-		"http://example.com/first",
+		rr = request(router, "DELETE", "/crawlings/1", "")
+		ts.Assert(t, rr.Code == 200, "Expected response to have 200 status")
+
+		cCount, _ = db.Count(&store.Crawling{})
+		ts.Assert(t, cCount == 0, "Expected to delete a crawling")
 	})
-
-	doRequest := curryRequest(DeleteCrawling, db)
-
-	ts.Assert(t, db.One("ID", 1, &store.Crawling{}) == nil, "Expected DB to have a crawling with ID 1")
-	ts.Assert(t, db.One("ID", 1, &store.PageResult{}) == nil, "Expected DB to have a page result with ID 1")
-
-	responseBody := doRequest(paramsMap{"sitemapId": "1", "crawlingId": "2"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "error", "\"not found\""), "Expected to return an error for unexisting crawling")
-
-	responseBody = doRequest(paramsMap{"sitemapId": "2", "crawlingId": "1"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "error", "\"not found\""), "Expected to return an error for unexisting sitemap")
-
-	responseBody = doRequest(paramsMap{"sitemapId": "1", "crawlingId": "1"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "status", "\"Deleted\""), "Expected to return a status")
-	ts.Assert(t, db.One("ID", 1, &store.Crawling{}) != nil, "Expected to delete a crawling with ID 1")
-	ts.Assert(t, db.One("ID", 1, &store.PageResult{}) != nil, "Expected to delete a page result with ID 1")
 }
 
 func TestGetPageResults(t *testing.T) {
-	db := store.NewDB(ts.GetTestDBName(), true)
-	defer db.Close()
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		db.Save(&store.PageResult{CrawlingID: 1, URL: "/first", Status: 200})
+		db.Save(&store.PageResult{CrawlingID: 2, URL: "/second", Status: 404})
+		db.Save(&store.PageResult{CrawlingID: 3, URL: "/third", Status: 500})
 
-	// Create entities
-	err := db.Save(&store.Sitemap{
-		Name:     "The name",
-		URL:      "http://example.com/sitemap.xml",
-		Username: "USER",
-		Password: "PASSWORD",
+		res := request(router, "GET", "/page_results", `{"crawling_id":1}`).Body.String()
+		ts.Assert(t, ts.ContainsJSON(res, "ID", "1"), "Expected to return only first page result")
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "2"), "Expected to return only first page result")
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "3"), "Expected to return only first page result")
+
+		res = request(router, "GET", "/page_results", `{"status":404}`).Body.String()
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "1"), "Expected to return only second page result")
+		ts.Assert(t, ts.ContainsJSON(res, "ID", "2"), "Expected to return only second page result")
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "3"), "Expected to return only second page result")
+
+		res = request(router, "GET", "/page_results", `{"url":"third"}`).Body.String()
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "1"), "Expected to return only third page result")
+		ts.Assert(t, !ts.ContainsJSON(res, "ID", "2"), "Expected to return only third page result")
+		ts.Assert(t, ts.ContainsJSON(res, "ID", "3"), "Expected to return only third page result")
 	})
-	ts.Assert(t, err == nil, "Expected to create a sitemap")
-
-	err = db.Save(&store.Crawling{
-		SitemapID: 1,
-	})
-	ts.Assert(t, err == nil, "Expected to create a crawling")
-
-	err = db.Save(&store.PageResult{
-		CrawlingID: 1,
-		URL:        "http://example.com/page",
-	})
-	ts.Assert(t, err == nil, "Expected to create a page result")
-
-	// Curry request
-	doRequest := curryRequest(GetPageResults, db)
-
-	responseBody := doRequest(paramsMap{"crawlingId": "2"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "error", "\"not found\""), "Expected to return an error for unexisting crawling")
-
-	responseBody = doRequest(paramsMap{"crawlingId": "1"}).Body.String()
-	ts.Assert(t, ts.ContainsJSON(responseBody, "URL", "\"http://example.com/page\""), "Expected to response to contain page URL")
-	ts.Assert(t, ts.ContainsJSON(responseBody, "Status", "0"), "Expected to response to contain page status code")
 }

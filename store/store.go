@@ -9,6 +9,8 @@ import (
 	"github.com/asdine/storm/q"
 )
 
+const queryLimit = 10000
+
 // Sitemap - an entity representing a particular sitemap
 type Sitemap struct {
 	ID       int    `storm:"id,increment"`
@@ -87,18 +89,12 @@ func DeleteSitemap(db *storm.DB, id int) error {
 	return db.DeleteStruct(&sitemap)
 }
 
-// GetCrawlings - retrieves all the crawling for a particular sitemap
-func GetCrawlings(db *storm.DB, sitemap *Sitemap) []Crawling {
-	crawlings := []Crawling{}
-	db.Find("SitemapID", sitemap.ID, &crawlings)
-	return crawlings
-}
-
 // CreateCrawling - creates a new crawling and prepares results for all
 // the pages. Results are processed later in a background job.
 // If there is a crawling already running for this sitemap, the new one
 // will not be created and return will be returned instead.
-func CreateCrawling(db *storm.DB, sitemap *Sitemap, urls []string) error {
+func CreateCrawling(db *storm.DB, sitemap *Sitemap, urls []string) (*Crawling, error) {
+	crawling := &Crawling{}
 	query := db.Select(q.And(
 		q.Eq("SitemapID", sitemap.ID),
 		q.Eq("Processed", false),
@@ -106,25 +102,22 @@ func CreateCrawling(db *storm.DB, sitemap *Sitemap, urls []string) error {
 	err := query.First(&Crawling{})
 
 	if err == nil {
-		return errors.New("Current crawling is in progress, cannot create another")
+		return crawling, errors.New("Current crawling is in progress, cannot create another")
 	}
 
 	tx, err := db.Begin(true)
 	if err != nil {
-		return err
+		return crawling, err
 	}
 
-	currentTime := time.Now()
+	crawling.SitemapID = sitemap.ID
+	crawling.CreatedAt = time.Now()
+	crawling.Processed = false
 
-	crawling := &Crawling{
-		SitemapID: sitemap.ID,
-		CreatedAt: currentTime,
-		Processed: false,
-	}
 	tx.Save(crawling)
 
 	if err != nil {
-		return err
+		return crawling, err
 	}
 	defer tx.Rollback()
 
@@ -136,28 +129,20 @@ func CreateCrawling(db *storm.DB, sitemap *Sitemap, urls []string) error {
 		})
 	}
 
-	return tx.Commit()
+	return crawling, tx.Commit()
 }
 
-func DeleteCrawling(db *storm.DB, sitemapID int, crawlingID int) error {
+func DeleteCrawling(db *storm.DB, crawlingID int) error {
 	var crawling Crawling
 
-	query := db.Select(
-		q.And(
-			q.Eq("SitemapID", sitemapID),
-			q.Eq("ID", crawlingID),
-		),
-	)
-
-	err := query.First(&crawling)
-	if err != nil {
+	if err := db.One("ID", crawlingID, &crawling); err != nil {
 		return err
 	}
 
 	var pageResults []PageResult
 	db.Find("CrawlingID", crawling.ID, &pageResults)
 
-	tx, err := db.Begin(true)
+	tx, _ := db.Begin(true)
 
 	tx.DeleteStruct(&crawling)
 
@@ -168,8 +153,71 @@ func DeleteCrawling(db *storm.DB, sitemapID int, crawlingID int) error {
 	return tx.Commit()
 }
 
-func GetPageResults(db *storm.DB, crawling Crawling) []PageResult {
-	var pageResults []PageResult
-	db.Find("CrawlingID", crawling.ID, &pageResults)
+// CrawlingsFilter a struct used for filtering crawlings based on JSON encoded parameters
+type CrawlingsFilter struct {
+	SitemapID int    `json:"sitemap_id"`
+	Processed string `json:"processed,omitempty"`
+	Limit     int    `json:"limit"`
+}
+
+// Query - applies CrawlingsFilter and returns results
+func (f *CrawlingsFilter) Query(db *storm.DB) []Crawling {
+	crawlings := []Crawling{}
+	filters := []q.Matcher{}
+
+	if f.SitemapID != 0 {
+		filters = append(filters, q.Eq("SitemapID", f.SitemapID))
+	}
+	if f.Processed == "true" {
+		filters = append(filters, q.Eq("Processed", true))
+	}
+	if f.Processed == "false" {
+		filters = append(filters, q.Eq("Processed", false))
+	}
+
+	query := db.Select(q.And(filters...))
+
+	if f.Limit > 0 && f.Limit < queryLimit {
+		query = query.Limit(f.Limit)
+	} else {
+		query = query.Limit(queryLimit)
+	}
+
+	query.Find(&crawlings)
+	return crawlings
+}
+
+// PageResultsFilter a struct used for filtering page results based on JSON encoded parameters
+type PageResultsFilter struct {
+	CrawlingID int    `json:"crawling_id"`
+	URL        string `json:"url,omitempty"`
+	Status     int    `json:"status,omitempty"`
+	Limit      int    `json:"limit"`
+}
+
+// Query - applies PageResultsFilter and returns results
+func (f *PageResultsFilter) Query(db *storm.DB) []PageResult {
+	pageResults := []PageResult{}
+	filters := []q.Matcher{}
+
+	if f.CrawlingID != 0 {
+		filters = append(filters, q.Eq("CrawlingID", f.CrawlingID))
+	}
+	if f.Status != 0 {
+		filters = append(filters, q.Eq("Status", f.Status))
+	}
+	if f.URL != "" {
+		filters = append(filters, q.Re("URL", f.URL))
+	}
+
+	query := db.Select(q.And(filters...))
+
+	if f.Limit > 0 && f.Limit < queryLimit {
+		query = query.Limit(f.Limit)
+	} else {
+		query = query.Limit(queryLimit)
+	}
+
+	query.Find(&pageResults)
 	return pageResults
 }
