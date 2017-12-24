@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -11,23 +12,46 @@ import (
 	"github.com/luchkonikita/canary/workers"
 )
 
-var (
-	port = "4000"
-)
-
 func main() {
-	db := store.NewDB("storage.db", false)
+	var dbFile = flag.String("db", "canary.db", "database file, default is ./storage.db")
+	var port = flag.String("port", "4000", "port to listen on, default is 4000")
+	var username = flag.String("username", "", "username for basic auth (if needed)")
+	var password = flag.String("password", "", "password for basic auth (if needed)")
+	var origin = flag.String("origin", "http://localhost:8080", "origin to allow cross-origin requests, default is http://localhost:8080")
+	flag.Parse()
+
+	db := store.NewDB(*dbFile, false)
 	defer db.Close()
 
 	go workers.Start(db)
 
-	log.Printf("Listening on the port: %s", port)
+	log.Printf("Listening on the port: %s", *port)
 	router := handlers.NewRouter(db)
 
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:8080"},
+		AllowedOrigins:   []string{*origin},
 		AllowCredentials: true,
 	})
 	handler := corsMiddleware.Handler(router)
-	http.ListenAndServe(":"+port, handler)
+	handler = basicAuthMiddleware(handler, *username, *password)
+
+	http.ListenAndServe(":"+*port, handler)
+}
+
+func basicAuthMiddleware(next http.Handler, username, password string) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		u, p, _ := r.BasicAuth()
+
+		if username == "" && password == "" {
+			next.ServeHTTP(rw, r)
+			return
+		}
+
+		if u == username && p == password {
+			next.ServeHTTP(rw, r)
+		} else {
+			rw.WriteHeader(http.StatusForbidden)
+			rw.Write([]byte("Forbidden"))
+		}
+	})
 }

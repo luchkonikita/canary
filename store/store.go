@@ -77,8 +77,14 @@ func CreateSitemap(db *storm.DB, sitemap *Sitemap) error {
 	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
 		return errors.New("Sitemap Name and URL cannot be empty")
 	}
-
 	return db.Save(sitemap)
+}
+
+func UpdateSitemap(db *storm.DB, sitemap *Sitemap) error {
+	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
+		return errors.New("Sitemap Name and URL cannot be empty")
+	}
+	return db.Update(sitemap)
 }
 
 // DeleteSitemap - deletes a sitemap found by ID

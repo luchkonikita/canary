@@ -23,6 +23,7 @@ func NewRouter(db *storm.DB) *httprouter.Router {
 	// Sitemaps
 	router.GET("/sitemaps", GetSitemaps(db))
 	router.POST("/sitemaps", CreateSitemap(db))
+	router.PATCH("/sitemaps/:sitemapId", UpdateSitemap(db))
 	router.DELETE("/sitemaps/:sitemapId", DeleteSitemap(db))
 
 	// Crawlings
@@ -57,6 +58,26 @@ func CreateSitemap(db *storm.DB) httprouter.Handle {
 		} else {
 			renderOK(rw, map[string]interface{}{
 				"status":  "Created",
+				"sitemap": sitemap,
+			})
+		}
+	}
+}
+
+// UpdateSitemap - updates a sitemap via `PATCH /sitemaps/sitemapId`
+func UpdateSitemap(db *storm.DB) httprouter.Handle {
+	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		id, _ := strconv.Atoi(p.ByName("sitemapId"))
+		sitemap := &store.Sitemap{ID: id}
+		decoder := json.NewDecoder(r.Body)
+		decoder.Decode(sitemap)
+		err := store.UpdateSitemap(db, sitemap)
+
+		if err != nil {
+			renderNotFound(rw, err)
+		} else {
+			renderOK(rw, map[string]interface{}{
+				"status":  "Updated",
 				"sitemap": sitemap,
 			})
 		}

@@ -4,4 +4,5 @@ storage.db
 test_support/test_storage.db
 debug.test
 canary
+canary.db
 .DS_Store

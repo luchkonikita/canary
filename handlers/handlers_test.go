@@ -59,10 +59,7 @@ func TestCreateSitemap(t *testing.T) {
 		ts.Assert(t, rr.Code == 422, "Expected to return an error")
 		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Sitemap should not be created with blank name")
 
-		validParams := `{
-			"name": "The Name",
-			"url": "http://example/sitemap.xml"
-    }`
+		validParams := `{"name": "The Name", "url": "http://example/sitemap.xml"}`
 
 		rr = request(router, "POST", "/sitemaps", validParams)
 		sitemaps := store.GetSitemaps(db)
@@ -72,6 +69,35 @@ func TestCreateSitemap(t *testing.T) {
 
 		rr = request(router, "POST", "/sitemaps", validParams)
 		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "CreateSitemap should not duplicate a sitemap")
+	})
+}
+
+func TestUpdateSitemap(t *testing.T) {
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
+
+		db.Save(&store.Sitemap{
+			Name: "Old name",
+			URL:  "http://old.com",
+		})
+
+		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
+
+		validParams := `{"name": "New name", "url": "http://new.com"}`
+
+		rr := request(router, "PATCH", "/sitemaps/2", validParams)
+		ts.Assert(t, rr.Code == 404, "Expected to have 404 response")
+
+		var sitemap store.Sitemap
+		db.One("ID", 1, &sitemap)
+		ts.Assert(t, sitemap.Name == "Old name", "Should not update sitemap")
+		ts.Assert(t, sitemap.URL == "http://old.com", "Should not update sitemap")
+
+		rr = request(router, "PATCH", "/sitemaps/1", validParams)
+		db.One("ID", 1, &sitemap)
+		ts.Assert(t, rr.Code == 200, "Expected to have 200 response")
+		ts.Assert(t, sitemap.Name == "New name", "Should update sitemap")
+		ts.Assert(t, sitemap.URL == "http://new.com", "Should update sitemap")
 	})
 }
 

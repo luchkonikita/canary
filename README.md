@@ -35,11 +35,9 @@ Run `go test ./...` from the project root.
 ## TODO
 
 - [*] Remove nesting from routes, use request body and query params
-- [ ] Set CORS hosts from command arguments
+- [*] Set CORS hosts from command arguments
 - [*] Add pagination to page results endpoint
 - [ ] Document endpoints
-- [ ] Backup endpoint
-- [ ] Data reset endpoint
 - [ ] Store pages HTML
-- [ ] Update sitemap
-- [ ] Add http basic auth
+- [*] Update sitemap
+- [*] Add http basic auth
