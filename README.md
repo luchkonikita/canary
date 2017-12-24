@@ -1,8 +1,8 @@
-# Canary
+<div align="center"><img src="https://github.com/luchkonikita/canary/blob/master/logo.png" width="800" /></div>
+
+<br/>
 
 ![Travis Badge](https://travis-ci.org/luchkonikita/canary.svg?branch=master)
-
-<img src="https://cl.ly/2u0k2O2e233s/download/canary.jpg" width="200" />
 
 Canary is a microservice for testing your websites.
 It can be deployed as a single binary and used via HTTP API.
