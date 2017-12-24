@@ -29,6 +29,11 @@ func request(router *httprouter.Router, verb, path string, body string) *httptes
 	return rr
 }
 
+func dbContains(db *storm.DB, sType interface{}, count int) bool {
+	dbCount, _ := db.Count(sType)
+	return dbCount == count
+}
+
 func TestGetSitemaps(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
 		rr := request(router, "GET", "/sitemaps", "")
@@ -103,22 +108,27 @@ func TestUpdateSitemap(t *testing.T) {
 
 func TestDeleteSitemap(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
-		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
+		ts.Assert(t, dbContains(db, &store.Sitemap{}, 0), "Database should contain 0 sitemaps")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 0), "Database should contain 0 crawlings")
+		ts.Assert(t, dbContains(db, &store.PageResult{}, 0), "Database should contain 0 page results")
 
-		db.Save(&store.Sitemap{
-			Name: "The name",
-			URL:  "http://example.com",
-		})
+		db.Save(&store.Sitemap{Name: "The name", URL: "http://example.com"})
+		db.Save(&store.Crawling{SitemapID: 1})
+		db.Save(&store.PageResult{CrawlingID: 1})
 
-		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
+		ts.Assert(t, dbContains(db, &store.Sitemap{}, 1), "Database should contain 1 sitemap")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 1), "Database should contain 1 crawling")
+		ts.Assert(t, dbContains(db, &store.PageResult{}, 1), "Database should contain 1 page result")
 
 		rr := request(router, "DELETE", "/sitemaps/2", "")
 		ts.Assert(t, rr.Code == 404, "Expected to have 404 response")
-		ts.Assert(t, len(store.GetSitemaps(db)) == 1, "Database should contain 1 sitemap")
 
 		rr = request(router, "DELETE", "/sitemaps/1", "")
 		ts.Assert(t, rr.Code == 200, "Expected to have 200 response")
-		ts.Assert(t, len(store.GetSitemaps(db)) == 0, "Database should contain 0 sitemaps")
+
+		ts.Assert(t, dbContains(db, &store.Sitemap{}, 0), "Database should contain 0 sitemaps")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 0), "Database should contain 0 crawlings")
+		ts.Assert(t, dbContains(db, &store.PageResult{}, 0), "Database should contain 0 page results")
 	})
 }
 
@@ -136,11 +146,8 @@ func TestCreateCrawling(t *testing.T) {
 		db.Save(&store.Sitemap{Name: "The name", URL: sitemapServer.URL})
 		db.Save(&store.Sitemap{Name: "Another name", URL: "NOT WORKING URL"})
 
-		cCount, _ := db.Count(&store.Crawling{})
-		prCount, _ := db.Count(&store.PageResult{})
-
-		ts.Assert(t, cCount == 0, "Expected to DB to have 0 crawlings")
-		ts.Assert(t, prCount == 0, "Expected to DB to have 0 crawlings")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 0), "Expected to DB to have 0 crawlings")
+		ts.Assert(t, dbContains(db, &store.PageResult{}, 0), "Expected to DB to have 0 page results")
 
 		rr = request(router, "POST", "/crawlings", `{"sitemap_id":2}`)
 		ts.Assert(t, rr.Code == 400, "Expected to have 400 response when URL is broken")
@@ -177,20 +184,17 @@ func TestGetCrawlings(t *testing.T) {
 func TestDeleteCrawling(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
 		db.Save(&store.Crawling{SitemapID: 1, Processed: false, CreatedAt: time.Now()})
-		cCount, _ := db.Count(&store.Crawling{})
-		ts.Assert(t, cCount == 1, "Expected to DB to have 1 crawling")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 1), "Expected to DB to have 1 crawling")
 
 		rr := request(router, "DELETE", "/crawlings/2", "")
 		ts.Assert(t, rr.Code == 400, "Expected response to have 404 status")
 
-		cCount, _ = db.Count(&store.Crawling{})
-		ts.Assert(t, cCount == 1, "Expected to DB to have 1 crawling")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 1), "Expected to DB to have 1 crawling")
 
 		rr = request(router, "DELETE", "/crawlings/1", "")
 		ts.Assert(t, rr.Code == 200, "Expected response to have 200 status")
 
-		cCount, _ = db.Count(&store.Crawling{})
-		ts.Assert(t, cCount == 0, "Expected to delete a crawling")
+		ts.Assert(t, dbContains(db, &store.Crawling{}, 0), "Expected to delete a crawling")
 	})
 }
 

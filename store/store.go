@@ -36,6 +36,7 @@ type PageResult struct {
 	Status     int `storm:"index"`
 }
 
+// HasAuth - shows if sitemap has basic auth credentials
 func (s Sitemap) HasAuth() bool {
 	return len(s.Username) > 0 && len(s.Password) > 0
 }
@@ -80,6 +81,7 @@ func CreateSitemap(db *storm.DB, sitemap *Sitemap) error {
 	return db.Save(sitemap)
 }
 
+// UpdateSitemap - updates a sitemap
 func UpdateSitemap(db *storm.DB, sitemap *Sitemap) error {
 	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
 		return errors.New("Sitemap Name and URL cannot be empty")
@@ -89,10 +91,25 @@ func UpdateSitemap(db *storm.DB, sitemap *Sitemap) error {
 
 // DeleteSitemap - deletes a sitemap found by ID
 func DeleteSitemap(db *storm.DB, id int) error {
-	// TODO: This should delete all related entities
 	var sitemap Sitemap
-	db.One("ID", id, &sitemap)
-	return db.DeleteStruct(&sitemap)
+	if err := db.One("ID", id, &sitemap); err != nil {
+		return err
+	}
+
+	var crawlings []Crawling
+	db.Find("SitemapID", sitemap.ID, &crawlings)
+
+	tx, _ := db.Begin(true)
+	tx.DeleteStruct(&sitemap)
+	for _, crawling := range crawlings {
+		var pageResults []PageResult
+		db.Find("CrawlingID", crawling.ID, &pageResults)
+		tx.DeleteStruct(&crawling)
+		for _, pageResult := range pageResults {
+			tx.DeleteStruct(&pageResult)
+		}
+	}
+	return tx.Commit()
 }
 
 // CreateCrawling - creates a new crawling and prepares results for all
@@ -149,13 +166,10 @@ func DeleteCrawling(db *storm.DB, crawlingID int) error {
 	db.Find("CrawlingID", crawling.ID, &pageResults)
 
 	tx, _ := db.Begin(true)
-
 	tx.DeleteStruct(&crawling)
-
 	for _, pageResult := range pageResults {
 		tx.DeleteStruct(&pageResult)
 	}
-
 	return tx.Commit()
 }
 
