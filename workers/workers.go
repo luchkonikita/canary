@@ -109,6 +109,13 @@ func (cw *CrawlerWorker) Work(restarts int) {
 		),
 	)
 
+	var concurrency int
+	if cw.sitemap.Concurrency > 0 && cw.sitemap.Concurrency < 20 {
+		concurrency = cw.sitemap.Concurrency
+	} else {
+		concurrency = 1
+	}
+
 Loop:
 	for {
 		var pageResults []store.PageResult

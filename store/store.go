@@ -13,11 +13,12 @@ const queryLimit = 10000
 
 // Sitemap - an entity representing a particular sitemap
 type Sitemap struct {
-	ID       int    `storm:"id,increment"`
-	Name     string `storm:"unique"`
-	URL      string `storm:"unique"`
-	Username string
-	Password string
+	ID          int    `storm:"id,increment"`
+	Name        string `storm:"unique"`
+	URL         string `storm:"unique"`
+	Concurrency int
+	Username    string
+	Password    string
 }
 
 // Crawling - a single crawling action, with page results related to it
@@ -178,6 +179,7 @@ type CrawlingsFilter struct {
 	SitemapID int    `json:"sitemap_id"`
 	Processed string `json:"processed,omitempty"`
 	Limit     int    `json:"limit"`
+	Offset    int    `json:"offset"`
 }
 
 // Query - applies CrawlingsFilter and returns results
@@ -203,7 +205,7 @@ func (f *CrawlingsFilter) Query(db *storm.DB) []Crawling {
 		query = query.Limit(queryLimit)
 	}
 
-	query.Find(&crawlings)
+	query.Skip(f.Offset).Find(&crawlings)
 	return crawlings
 }
 
@@ -213,6 +215,7 @@ type PageResultsFilter struct {
 	URL        string `json:"url,omitempty"`
 	Status     int    `json:"status,omitempty"`
 	Limit      int    `json:"limit"`
+	Offset     int    `json:"offset"`
 }
 
 // Query - applies PageResultsFilter and returns results
@@ -238,6 +241,6 @@ func (f *PageResultsFilter) Query(db *storm.DB) []PageResult {
 		query = query.Limit(queryLimit)
 	}
 
-	query.Find(&pageResults)
+	query.Skip(f.Offset).Find(&pageResults)
 	return pageResults
 }

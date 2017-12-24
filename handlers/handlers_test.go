@@ -34,24 +34,22 @@ func dbContains(db *storm.DB, sType interface{}, count int) bool {
 	return dbCount == count
 }
 
+func TestPing(t *testing.T) {
+	requestCase(func(db *storm.DB, router *httprouter.Router) {
+		rr := request(router, "GET", "/", "")
+
+		ts.Assert(t, rr.Code == 200, "Ping should be successful")
+	})
+}
+
 func TestGetSitemaps(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
-		rr := request(router, "GET", "/sitemaps", "")
+		db.Save(&store.Sitemap{Name: "The name", URL: "http://example.com"})
 
-		db.Save(&store.Sitemap{
-			Name: "The name",
-			URL:  "http://example.com",
-		})
+		res := request(router, "GET", "/sitemaps", "").Body.String()
 
-		rr = request(router, "GET", "/sitemaps", "")
-		responseBody := rr.Body.String()
-
-		if !strings.Contains(responseBody, "\"Name\":\"The name\"") {
-			t.Error("Expected response to contain sitemap name")
-		}
-		if !strings.Contains(responseBody, "\"URL\":\"http://example.com\"") {
-			t.Error("Expected response to contain sitemap url")
-		}
+		ts.Assert(t, ts.ContainsJSON(res, "Name", "\"The name\""), "Expected response to contain sitemap name")
+		ts.Assert(t, ts.ContainsJSON(res, "URL", "\"http://example.com\""), "Expected response to contain sitemap URL")
 	})
 }
 

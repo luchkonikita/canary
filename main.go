@@ -13,11 +13,11 @@ import (
 )
 
 func main() {
-	var dbFile = flag.String("db", "canary.db", "database file, default is ./storage.db")
-	var port = flag.String("port", "4000", "port to listen on, default is 4000")
+	var dbFile = flag.String("db", "canary.db", "database file")
+	var port = flag.String("port", "4000", "port to listen on")
 	var username = flag.String("username", "", "username for basic auth (if needed)")
 	var password = flag.String("password", "", "password for basic auth (if needed)")
-	var origin = flag.String("origin", "http://localhost:8080", "origin to allow cross-origin requests, default is http://localhost:8080")
+	var origin = flag.String("origin", "http://localhost:8080", "origin to allow cross-origin requests")
 	flag.Parse()
 
 	db := store.NewDB(*dbFile, false)

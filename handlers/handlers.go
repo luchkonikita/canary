@@ -13,12 +13,77 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+const help = `
+Welcome to Canary service API.
+
+Usage examples:
+
+- GET /sitemaps
+	{}
+	Returns a list of sitemaps.
+
+- POST /sitemaps
+	{
+		"name": "Some name",
+		"url": "http://someurl.com",
+		"concurrency": 10,
+		"username": "Username when sitemap requires basic auth",
+		"password": "Password when sitemap requires basic auth",
+	}
+	Adds a new sitemap.
+
+- PATCH /sitemaps/1
+	{
+		"name": "Some name",
+		"url": "http://someurl.com",
+		"concurrency": 10,
+		"username": "Username when sitemap requires basic auth",
+		"password": "Password when sitemap requires basic auth",
+	}
+	Updates a sitemap.
+
+- DELETE /sitemaps/1
+	{}
+	Updates a sitemap.
+
+- GET /crawlings
+	{
+		"sitemap_id": 1,
+		"processed": "true",
+		"limit": 10,
+		"offset": 0,
+	}
+	Returns a list of crawlings.
+
+- POST /crawlings
+	{
+		"sitemap_id": 1
+	}
+	Creates a new crawling and starts it.
+
+- DELETE /crawlings/1
+	{}
+	Deletes a crawling and cancels it.
+
+- GET /page_results
+	{
+		"crawling_id": 1,
+		"status": 500,
+		"url": "some-url-substring"
+		"limit": 10,
+		"offset": 0,
+	}
+	Returns a list of page results.
+`
+
 // Handler - a function returning router compatible handler
 type Handler func(db *storm.DB) httprouter.Handle
 
 // NewRouter - defines all the routes and corresponding handlers
 func NewRouter(db *storm.DB) *httprouter.Router {
 	router := httprouter.New()
+
+	router.GET("/", Ping)
 
 	// Sitemaps
 	router.GET("/sitemaps", GetSitemaps(db))
@@ -35,6 +100,11 @@ func NewRouter(db *storm.DB) *httprouter.Router {
 	router.GET("/page_results", GetPageResults(db))
 
 	return router
+}
+
+// Ping - return 200 status and some usage instructions
+func Ping(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	rw.Write([]byte(help))
 }
 
 // GetSitemaps - returns a list of all sitemaps in the database via `GET /sitemaps`

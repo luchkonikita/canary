@@ -15,18 +15,31 @@ the data locally. You don't need any external store for making it work.
 
 With the embedded storage Canary can provide you with historical data.
 
-_The more detailed decription is coming soon..._
-
 ## Installation
 
-There are no releases with a ready binary yet,
-as the project is in active development and is not stable.
-
-If you want to build it locally just clone the repo and do `go build` from the root.
+```
+go get github.com/luchkonikita/canary
+go install github.com/luchkonikita/canary
+```
 
 ## Usage
 
-_Coming soon..._
+Use the `canary` from the command-line with the following flags:
+
+```
+-db string
+      database file (default "canary.db")
+-origin string
+      origin to allow cross-origin requests (default "http://localhost:8080")
+-password string
+      password for basic auth (if needed)
+-port string
+      port to listen on (default "4000")
+-username string
+      username for basic auth (if needed)
+```
+
+To ping the API and get endpoints description you can just make a request with `curl localhost:4000`.
 
 ## Testing
 
@@ -34,8 +47,4 @@ Run `go test ./...` from the project root.
 
 ## TODO
 
-- [ ] Improve README
-- [ ] Add skip option for the pagination
-- [ ] Document endpoints
 - [ ] Store pages HTML
-- [ ] Configure concurrency in the sitemap record
