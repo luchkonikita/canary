@@ -3,6 +3,8 @@ package store
 import (
 	"errors"
 	"log"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/asdine/storm"
@@ -10,6 +12,8 @@ import (
 )
 
 const queryLimit = 10000
+
+// DB Entities
 
 // Sitemap - an entity representing a particular sitemap
 type Sitemap struct {
@@ -42,7 +46,10 @@ func (s Sitemap) HasAuth() bool {
 	return len(s.Username) > 0 && len(s.Password) > 0
 }
 
+// DB initialization
+
 // NewDB - initializes a DB and ensures all the buckets are in place
+// If resetData is true this will clean up database after initialization (used in tests).
 func NewDB(filename string, resetData bool) *storm.DB {
 	db, err := storm.Open(filename)
 	if err != nil {
@@ -61,33 +68,50 @@ func NewDB(filename string, resetData bool) *storm.DB {
 	return db
 }
 
-// GetSitemap - retrieves a sitemap by ID
-func GetSitemap(db *storm.DB, sitemapID int) (*Sitemap, error) {
-	sitemap := &Sitemap{}
-	err := db.One("ID", sitemapID, sitemap)
-	return sitemap, err
-}
+// Actions
+// Different functions for mutating data.
 
-// GetSitemaps - retrieves all sitemaps for the store
-func GetSitemaps(db *storm.DB) []Sitemap {
-	var sitemaps []Sitemap
-	db.All(&sitemaps)
-	return sitemaps
-}
-
-func CreateSitemap(db *storm.DB, sitemap *Sitemap) error {
-	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
-		return errors.New("Sitemap Name and URL cannot be empty")
+// CreateSitemap - creates a sitemap
+func CreateSitemap(db *storm.DB, sitemap *Sitemap, r *http.Request) error {
+	assignSitemapValues(sitemap, r)
+	if err := validateSitemap(sitemap); err != nil {
+		return err
 	}
 	return db.Save(sitemap)
 }
 
 // UpdateSitemap - updates a sitemap
-func UpdateSitemap(db *storm.DB, sitemap *Sitemap) error {
+func UpdateSitemap(db *storm.DB, sitemap *Sitemap, r *http.Request) error {
+	assignSitemapValues(sitemap, r)
+	if err := validateSitemap(sitemap); err != nil {
+		return err
+	}
+	return db.Update(sitemap)
+}
+
+func assignSitemapValues(sitemap *Sitemap, r *http.Request) {
+	if concurrency, err := strconv.Atoi(r.FormValue("concurrency")); err == nil {
+		sitemap.Concurrency = concurrency
+	}
+	if name := r.FormValue("name"); name != "" {
+		sitemap.Name = name
+	}
+	if url := r.FormValue("url"); url != "" {
+		sitemap.URL = url
+	}
+	if username := r.FormValue("username"); username != "" {
+		sitemap.Username = username
+	}
+	if password := r.FormValue("password"); password != "" {
+		sitemap.Password = password
+	}
+}
+
+func validateSitemap(sitemap *Sitemap) error {
 	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
 		return errors.New("Sitemap Name and URL cannot be empty")
 	}
-	return db.Update(sitemap)
+	return nil
 }
 
 // DeleteSitemap - deletes a sitemap found by ID
@@ -174,12 +198,34 @@ func DeleteCrawling(db *storm.DB, crawlingID int) error {
 	return tx.Commit()
 }
 
+// Queries
+// Basic query methods without any sophisticated logic
+
+// GetSitemap - retrieves a sitemap by ID
+func GetSitemap(db *storm.DB, sitemapID int) (*Sitemap, error) {
+	sitemap := &Sitemap{}
+	err := db.One("ID", sitemapID, sitemap)
+	return sitemap, err
+}
+
+// GetSitemaps - retrieves all sitemaps for the store
+func GetSitemaps(db *storm.DB) []Sitemap {
+	var sitemaps []Sitemap
+	db.All(&sitemaps)
+	return sitemaps
+}
+
+// Filters
+// For building advanced queries and using parameters
+
 // CrawlingsFilter a struct used for filtering crawlings based on JSON encoded parameters
 type CrawlingsFilter struct {
-	SitemapID int    `json:"sitemap_id"`
-	Processed string `json:"processed,omitempty"`
-	Limit     int    `json:"limit"`
-	Offset    int    `json:"offset"`
+	Request *http.Request
+}
+
+// PageResultsFilter a struct used for filtering page results based on JSON encoded parameters
+type PageResultsFilter struct {
+	Request *http.Request
 }
 
 // Query - applies CrawlingsFilter and returns results
@@ -187,35 +233,19 @@ func (f *CrawlingsFilter) Query(db *storm.DB) []Crawling {
 	crawlings := []Crawling{}
 	filters := []q.Matcher{}
 
-	if f.SitemapID != 0 {
-		filters = append(filters, q.Eq("SitemapID", f.SitemapID))
+	if sitemapID, err := intValue(f.Request, "sitemap_id"); err == nil {
+		filters = append(filters, q.Eq("SitemapID", sitemapID))
 	}
-	if f.Processed == "true" {
-		filters = append(filters, q.Eq("Processed", true))
-	}
-	if f.Processed == "false" {
-		filters = append(filters, q.Eq("Processed", false))
+	if processed, err := boolValue(f.Request, "processed"); err == nil {
+		filters = append(filters, q.Eq("Processed", processed))
 	}
 
 	query := db.Select(q.And(filters...))
+	query = query.Limit(limitValue(f.Request))
+	query = query.Skip(offsetValue(f.Request))
 
-	if f.Limit > 0 && f.Limit < queryLimit {
-		query = query.Limit(f.Limit)
-	} else {
-		query = query.Limit(queryLimit)
-	}
-
-	query.Skip(f.Offset).Find(&crawlings)
+	query.Find(&crawlings)
 	return crawlings
-}
-
-// PageResultsFilter a struct used for filtering page results based on JSON encoded parameters
-type PageResultsFilter struct {
-	CrawlingID int    `json:"crawling_id"`
-	URL        string `json:"url,omitempty"`
-	Status     int    `json:"status,omitempty"`
-	Limit      int    `json:"limit"`
-	Offset     int    `json:"offset"`
 }
 
 // Query - applies PageResultsFilter and returns results
@@ -223,24 +253,60 @@ func (f *PageResultsFilter) Query(db *storm.DB) []PageResult {
 	pageResults := []PageResult{}
 	filters := []q.Matcher{}
 
-	if f.CrawlingID != 0 {
-		filters = append(filters, q.Eq("CrawlingID", f.CrawlingID))
+	if crawlingID, err := intValue(f.Request, "crawling_id"); err == nil {
+		filters = append(filters, q.Eq("CrawlingID", crawlingID))
 	}
-	if f.Status != 0 {
-		filters = append(filters, q.Eq("Status", f.Status))
+	if status, err := intValue(f.Request, "status"); err == nil {
+		filters = append(filters, q.Eq("Status", status))
 	}
-	if f.URL != "" {
-		filters = append(filters, q.Re("URL", f.URL))
+	if url, err := stringValue(f.Request, "url"); err == nil {
+		filters = append(filters, q.Re("URL", url))
 	}
 
 	query := db.Select(q.And(filters...))
+	query = query.Limit(limitValue(f.Request))
+	query = query.Skip(offsetValue(f.Request))
 
-	if f.Limit > 0 && f.Limit < queryLimit {
-		query = query.Limit(f.Limit)
-	} else {
-		query = query.Limit(queryLimit)
-	}
-
-	query.Skip(f.Offset).Find(&pageResults)
+	query.Find(&pageResults)
 	return pageResults
+}
+
+// Query helper functions
+func stringValue(r *http.Request, name string) (string, error) {
+	val := r.FormValue(name)
+	if val == "" {
+		return val, errors.New("is empty")
+	}
+	return val, nil
+}
+
+func intValue(r *http.Request, name string) (int, error) {
+	val := r.FormValue(name)
+	return strconv.Atoi(val)
+}
+
+func boolValue(r *http.Request, name string) (bool, error) {
+	val := r.FormValue(name)
+
+	if val == "true" {
+		return true, nil
+	} else if val == "false" {
+		return false, nil
+	}
+	return false, errors.New("is empty")
+}
+
+func offsetValue(r *http.Request) int {
+	offset, _ := intValue(r, "offset")
+	return offset
+}
+
+func limitValue(r *http.Request) int {
+	if limit, err := intValue(r, "limit"); err == nil {
+		if limit > 0 && limit < queryLimit {
+			return limit
+		}
+		return queryLimit
+	}
+	return queryLimit
 }

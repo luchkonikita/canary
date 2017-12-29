@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 
@@ -12,69 +11,6 @@ import (
 	"github.com/asdine/storm"
 	"github.com/julienschmidt/httprouter"
 )
-
-const help = `
-Welcome to Canary service API.
-
-Usage examples:
-
-- GET /sitemaps
-	{}
-	Returns a list of sitemaps.
-
-- POST /sitemaps
-	{
-		"name": "Some name",
-		"url": "http://someurl.com",
-		"concurrency": 10,
-		"username": "Username when sitemap requires basic auth",
-		"password": "Password when sitemap requires basic auth",
-	}
-	Adds a new sitemap.
-
-- PATCH /sitemaps/1
-	{
-		"name": "Some name",
-		"url": "http://someurl.com",
-		"concurrency": 10,
-		"username": "Username when sitemap requires basic auth",
-		"password": "Password when sitemap requires basic auth",
-	}
-	Updates a sitemap.
-
-- DELETE /sitemaps/1
-	{}
-	Updates a sitemap.
-
-- GET /crawlings
-	{
-		"sitemap_id": 1,
-		"processed": "true",
-		"limit": 10,
-		"offset": 0,
-	}
-	Returns a list of crawlings.
-
-- POST /crawlings
-	{
-		"sitemap_id": 1
-	}
-	Creates a new crawling and starts it.
-
-- DELETE /crawlings/1
-	{}
-	Deletes a crawling and cancels it.
-
-- GET /page_results
-	{
-		"crawling_id": 1,
-		"status": 500,
-		"url": "some-url-substring"
-		"limit": 10,
-		"offset": 0,
-	}
-	Returns a list of page results.
-`
 
 // Handler - a function returning router compatible handler
 type Handler func(db *storm.DB) httprouter.Handle
@@ -104,7 +40,9 @@ func NewRouter(db *storm.DB) *httprouter.Router {
 
 // Ping - return 200 status and some usage instructions
 func Ping(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	rw.Write([]byte(help))
+	renderOK(rw, map[string]interface{}{
+		"alive": true,
+	})
 }
 
 // GetSitemaps - returns a list of all sitemaps in the database via `GET /sitemaps`
@@ -119,9 +57,7 @@ func GetSitemaps(db *storm.DB) httprouter.Handle {
 func CreateSitemap(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		sitemap := &store.Sitemap{}
-		decoder := json.NewDecoder(r.Body)
-		decoder.Decode(sitemap)
-		err := store.CreateSitemap(db, sitemap)
+		err := store.CreateSitemap(db, sitemap, r)
 
 		if err != nil {
 			renderUnprocessableEntity(rw, err)
@@ -138,13 +74,14 @@ func CreateSitemap(db *storm.DB) httprouter.Handle {
 func UpdateSitemap(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		id, _ := strconv.Atoi(p.ByName("sitemapId"))
-		sitemap := &store.Sitemap{ID: id}
-		decoder := json.NewDecoder(r.Body)
-		decoder.Decode(sitemap)
-		err := store.UpdateSitemap(db, sitemap)
-
+		sitemap, err := store.GetSitemap(db, id)
 		if err != nil {
 			renderNotFound(rw, err)
+		}
+
+		err = store.UpdateSitemap(db, sitemap, r)
+		if err != nil {
+			renderUnprocessableEntity(rw, err)
 		} else {
 			renderOK(rw, map[string]interface{}{
 				"status":  "Updated",
@@ -173,12 +110,8 @@ func DeleteSitemap(db *storm.DB) httprouter.Handle {
 // GetCrawlings - returns a list of crawlings with results via `GET /sitemaps/:sitemapId/crawlings`
 func GetCrawlings(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		f := &store.CrawlingsFilter{}
-
-		if err := decodeBody(r, f); err != nil {
-			renderBadRequest(rw, err)
-		}
-
+		r.ParseForm()
+		f := &store.CrawlingsFilter{Request: r}
 		crawlings := f.Query(db)
 		renderOK(rw, crawlings)
 	}
@@ -189,15 +122,10 @@ func GetCrawlings(db *storm.DB) httprouter.Handle {
 // These results are going to be processed separately by background worker.
 func CreateCrawling(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		data := &struct {
-			SitemapID int `json:"sitemap_id"`
-		}{}
+		r.ParseForm()
+		id, _ := strconv.Atoi(r.FormValue("sitemap_id"))
 
-		if err := decodeBody(r, data); err != nil {
-			renderBadRequest(rw, err)
-		}
-
-		sitemap, err := store.GetSitemap(db, data.SitemapID)
+		sitemap, err := store.GetSitemap(db, id)
 		if err != nil {
 			renderNotFound(rw, err)
 			return
@@ -242,24 +170,11 @@ func DeleteCrawling(db *storm.DB) httprouter.Handle {
 // GetPageResults - loads page results for a crawling via `GET /crawlings/:crawlingId/page_results`
 func GetPageResults(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		f := &store.PageResultsFilter{}
-
-		if err := decodeBody(r, f); err != nil {
-			renderBadRequest(rw, err)
-		}
-
+		r.ParseForm()
+		f := &store.PageResultsFilter{Request: r}
 		pageResults := f.Query(db)
 		renderOK(rw, pageResults)
 	}
-}
-
-func decodeBody(r *http.Request, to interface{}) error {
-	body, err := ioutil.ReadAll(r.Body)
-	defer r.Body.Close()
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(body, to)
 }
 
 func renderOK(rw http.ResponseWriter, data interface{}) {
