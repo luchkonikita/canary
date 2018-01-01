@@ -31,6 +31,7 @@ func main() {
 	corsMiddleware := cors.New(cors.Options{
 		AllowedOrigins:   []string{*origin},
 		AllowCredentials: true,
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE"},
 	})
 	handler := corsMiddleware.Handler(router)
 	handler = basicAuthMiddleware(handler, *username, *password)
