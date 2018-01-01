@@ -93,17 +93,17 @@ func assignSitemapValues(sitemap *Sitemap, r *http.Request) {
 	if concurrency, err := strconv.Atoi(r.FormValue("concurrency")); err == nil {
 		sitemap.Concurrency = concurrency
 	}
-	if name := r.FormValue("name"); name != "" {
-		sitemap.Name = name
+	if _, ok := r.Form["name"]; ok {
+		sitemap.Name = r.FormValue("name")
 	}
-	if url := r.FormValue("url"); url != "" {
-		sitemap.URL = url
+	if _, ok := r.Form["url"]; ok {
+		sitemap.URL = r.FormValue("url")
 	}
-	if username := r.FormValue("username"); username != "" {
-		sitemap.Username = username
+	if _, ok := r.Form["username"]; ok {
+		sitemap.Username = r.FormValue("username")
 	}
-	if password := r.FormValue("password"); password != "" {
-		sitemap.Password = password
+	if _, ok := r.Form["password"]; ok {
+		sitemap.Password = r.FormValue("password")
 	}
 }
 
