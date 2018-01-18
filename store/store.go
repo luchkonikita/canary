@@ -11,7 +11,7 @@ import (
 	"github.com/asdine/storm/q"
 )
 
-const queryLimit = 10000
+const queryLimit = 20000
 
 // DB Entities
 
