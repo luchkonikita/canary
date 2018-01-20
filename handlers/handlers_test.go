@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -133,14 +134,18 @@ func TestDeleteSitemap(t *testing.T) {
 
 func TestCreateCrawling(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
-		sitemapServer := ts.NewServer(ts.SitemapXML, 200)
+		sitemapServer := httptest.NewServer(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, ts.SitemapXML)
+			}),
+		)
 		defer sitemapServer.Close()
 
 		rr := request(router, "POST", "/crawlings", url.Values{})
-		ts.Assert(t, rr.Code == 404, "Expected to have 400 response")
+		ts.Assert(t, rr.Code == 400, "Expected to have 400 response")
 
 		rr = request(router, "POST", "/crawlings", url.Values{"sitemap_id": {"1"}})
-		ts.Assert(t, rr.Code == 404, "Expected to have 404 response")
+		ts.Assert(t, rr.Code == 400, "Expected to have 400 response")
 
 		db.Save(&store.Sitemap{Name: "The name", URL: sitemapServer.URL})
 		db.Save(&store.Sitemap{Name: "Another name", URL: "NOT WORKING URL"})
@@ -151,7 +156,7 @@ func TestCreateCrawling(t *testing.T) {
 		rr = request(router, "POST", "/crawlings", url.Values{"sitemap_id": {"2"}})
 		ts.Assert(t, rr.Code == 400, "Expected to have 400 response when URL is broken")
 
-		rr = request(router, "POST", "/crawlings", url.Values{"sitemap_id": {"1"}})
+		rr = request(router, "POST", "/crawlings", url.Values{"sitemap_id": {"1"}, "headers.0.name": {"HeaderName"}, "headers.0.value": {"HeaderValue"}})
 		ts.Assert(t, rr.Code == 200, "Expected to have 200 response when URL is fine")
 
 		var crawling store.Crawling
@@ -159,7 +164,8 @@ func TestCreateCrawling(t *testing.T) {
 		db.One("SitemapID", 1, &crawling)
 		db.All(&pageResults)
 
-		ts.Assert(t, crawling.Processed == false, "Expected to create a crawling")
+		ts.Assert(t, crawling.Processed == false, "Expected to create a crawling with processed as false")
+		ts.Assert(t, crawling.Headers[0].Name == "HeaderName" && crawling.Headers[0].Value == "HeaderValue", "Expected to save crawling header")
 		ts.Assert(t, pageResults[0].CrawlingID == crawling.ID, "Expected to create first page result")
 		ts.Assert(t, pageResults[1].CrawlingID == crawling.ID, "Expected to create second page result")
 	})

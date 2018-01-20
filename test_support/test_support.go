@@ -1,11 +1,7 @@
 package test_support
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -30,19 +26,6 @@ const SitemapXML = `
 func GetTestDBName() string {
 	_, filename, _, _ := runtime.Caller(0)
 	return filepath.Dir(filename) + "/test_storage.db"
-}
-
-func NewTestRequest(data map[string]string) *http.Request {
-	json, _ := json.Marshal(data)
-	// We do not care about routing details as this is used to test handlers directly
-	return httptest.NewRequest("GET", "/", bytes.NewReader(json))
-}
-
-func NewServer(data string, header int) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(header)
-		fmt.Fprintln(w, data)
-	}))
 }
 
 func Assert(tb testing.TB, condition bool, msg string, v ...interface{}) {

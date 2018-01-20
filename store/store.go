@@ -9,28 +9,36 @@ import (
 
 	"github.com/asdine/storm"
 	"github.com/asdine/storm/q"
+	"github.com/gorilla/schema"
+	"github.com/luchkonikita/canary/utils"
 )
 
 const queryLimit = 20000
+
+var decoder = schema.NewDecoder()
 
 // DB Entities
 
 // Sitemap - an entity representing a particular sitemap
 type Sitemap struct {
-	ID          int    `storm:"id,increment"`
-	Name        string `storm:"unique"`
-	URL         string `storm:"unique"`
-	Concurrency int
-	Username    string
-	Password    string
+	ID   int    `schema:"-" storm:"id,increment"`
+	Name string `schema:"name" storm:"unique"`
+	URL  string `schema:"url" storm:"unique"`
+}
+
+type CrawlingHeader struct {
+	Name  string
+	Value string
 }
 
 // Crawling - a single crawling action, with page results related to it
 type Crawling struct {
-	ID        int `storm:"id,increment"`
-	SitemapID int `storm:"index"`
-	CreatedAt time.Time
-	Processed bool `storm:"index"`
+	ID          int              `schema:"-" storm:"id,increment"`
+	SitemapID   int              `schema:"sitemap_id" storm:"index"`
+	CreatedAt   time.Time        `schema:"-"`
+	Processed   bool             `schema:"-" storm:"index" `
+	Concurrency int              `schema:"sitemap_id"`
+	Headers     []CrawlingHeader `schema:"headers"`
 }
 
 // PageResult - an entity representing a particular requested page
@@ -39,11 +47,6 @@ type PageResult struct {
 	CrawlingID int `storm:"index"`
 	URL        string
 	Status     int `storm:"index"`
-}
-
-// HasAuth - shows if sitemap has basic auth credentials
-func (s Sitemap) HasAuth() bool {
-	return len(s.Username) > 0 && len(s.Password) > 0
 }
 
 // DB initialization
@@ -73,45 +76,20 @@ func NewDB(filename string, resetData bool) *storm.DB {
 
 // CreateSitemap - creates a sitemap
 func CreateSitemap(db *storm.DB, sitemap *Sitemap, r *http.Request) error {
-	assignSitemapValues(sitemap, r)
-	if err := validateSitemap(sitemap); err != nil {
-		return err
+	decoder.Decode(sitemap, r.Form)
+	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
+		return errors.New("Sitemap Name and URL cannot be empty")
 	}
 	return db.Save(sitemap)
 }
 
 // UpdateSitemap - updates a sitemap
 func UpdateSitemap(db *storm.DB, sitemap *Sitemap, r *http.Request) error {
-	assignSitemapValues(sitemap, r)
-	if err := validateSitemap(sitemap); err != nil {
-		return err
-	}
-	return db.Update(sitemap)
-}
-
-func assignSitemapValues(sitemap *Sitemap, r *http.Request) {
-	if concurrency, err := strconv.Atoi(r.FormValue("concurrency")); err == nil {
-		sitemap.Concurrency = concurrency
-	}
-	if _, ok := r.Form["name"]; ok {
-		sitemap.Name = r.FormValue("name")
-	}
-	if _, ok := r.Form["url"]; ok {
-		sitemap.URL = r.FormValue("url")
-	}
-	if _, ok := r.Form["username"]; ok {
-		sitemap.Username = r.FormValue("username")
-	}
-	if _, ok := r.Form["password"]; ok {
-		sitemap.Password = r.FormValue("password")
-	}
-}
-
-func validateSitemap(sitemap *Sitemap) error {
+	decoder.Decode(sitemap, r.Form)
 	if len(sitemap.Name) == 0 || len(sitemap.URL) == 0 {
 		return errors.New("Sitemap Name and URL cannot be empty")
 	}
-	return nil
+	return db.Update(sitemap)
 }
 
 // DeleteSitemap - deletes a sitemap found by ID
@@ -141,45 +119,53 @@ func DeleteSitemap(db *storm.DB, id int) error {
 // the pages. Results are processed later in a background job.
 // If there is a crawling already running for this sitemap, the new one
 // will not be created and return will be returned instead.
-func CreateCrawling(db *storm.DB, sitemap *Sitemap, urls []string) (*Crawling, error) {
-	crawling := &Crawling{}
+func CreateCrawling(db *storm.DB, cr *Crawling, r *http.Request) error {
+	sitemapID, _ := intValue(r, "sitemap_id")
+	sitemap, err := GetSitemap(db, sitemapID)
+	if err != nil {
+		return err
+	}
+
 	query := db.Select(q.And(
-		q.Eq("SitemapID", sitemap.ID),
+		q.Eq("SitemapID", sitemapID),
 		q.Eq("Processed", false),
 	))
-	err := query.First(&Crawling{})
 
-	if err == nil {
-		return crawling, errors.New("Current crawling is in progress, cannot create another")
+	if query.First(&Crawling{}) == nil {
+		return errors.New("Current crawling is in progress, cannot create another")
+	}
+
+	urls, err := utils.ParseSitemap(sitemap.URL)
+	if err != nil {
+		return err
 	}
 
 	tx, err := db.Begin(true)
 	if err != nil {
-		return crawling, err
+		return err
 	}
 
-	crawling.SitemapID = sitemap.ID
-	crawling.CreatedAt = time.Now()
-	crawling.Processed = false
-
-	tx.Save(crawling)
+	cr.CreatedAt = time.Now()
+	decoder.Decode(cr, r.Form)
+	tx.Save(cr)
 
 	if err != nil {
-		return crawling, err
+		return err
 	}
 	defer tx.Rollback()
 
 	for _, url := range urls {
 		tx.Save(&PageResult{
-			CrawlingID: crawling.ID,
+			CrawlingID: cr.ID,
 			URL:        url,
 			Status:     0,
 		})
 	}
 
-	return crawling, tx.Commit()
+	return tx.Commit()
 }
 
+// DeleteCrawling - deletes a crawling and all related page results
 func DeleteCrawling(db *storm.DB, crawlingID int) error {
 	var crawling Crawling
 

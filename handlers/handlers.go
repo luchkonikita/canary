@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/luchkonikita/canary/store"
-	"github.com/luchkonikita/canary/utils"
 
 	"github.com/asdine/storm"
 	"github.com/julienschmidt/httprouter"
@@ -56,6 +55,7 @@ func GetSitemaps(db *storm.DB) httprouter.Handle {
 // CreateSitemap - creates a new sitemap via `POST /sitemaps`
 func CreateSitemap(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		r.ParseForm()
 		sitemap := &store.Sitemap{}
 		err := store.CreateSitemap(db, sitemap, r)
 
@@ -73,6 +73,7 @@ func CreateSitemap(db *storm.DB) httprouter.Handle {
 // UpdateSitemap - updates a sitemap via `PATCH /sitemaps/sitemapId`
 func UpdateSitemap(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
+		r.ParseForm()
 		id, _ := strconv.Atoi(p.ByName("sitemapId"))
 		sitemap, err := store.GetSitemap(db, id)
 		if err != nil {
@@ -123,21 +124,8 @@ func GetCrawlings(db *storm.DB) httprouter.Handle {
 func CreateCrawling(db *storm.DB) httprouter.Handle {
 	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		r.ParseForm()
-		id, _ := strconv.Atoi(r.FormValue("sitemap_id"))
-
-		sitemap, err := store.GetSitemap(db, id)
-		if err != nil {
-			renderNotFound(rw, err)
-			return
-		}
-
-		urls, err := utils.ParseSitemap(sitemap)
-		if err != nil {
-			renderBadRequest(rw, err)
-			return
-		}
-
-		crawling, err := store.CreateCrawling(db, sitemap, urls)
+		crawling := &store.Crawling{}
+		err := store.CreateCrawling(db, crawling, r)
 
 		if err != nil {
 			renderBadRequest(rw, err)

@@ -25,9 +25,10 @@ var (
 
 // CrawlerWorker - the worker to run crawlings
 type CrawlerWorker struct {
-	client  *http.Client
-	sitemap store.Sitemap
-	db      *storm.DB
+	client   *http.Client
+	sitemap  store.Sitemap
+	crawling store.Crawling
+	db       *storm.DB
 }
 
 func (cw *CrawlerWorker) String() string {
@@ -78,7 +79,6 @@ func NewCrawlerWorker(db *storm.DB, sitemap store.Sitemap) *CrawlerWorker {
 // With customizable restarts this function is easier to test.
 func (cw *CrawlerWorker) Work(restarts int) {
 	db := cw.db
-	var crawling store.Crawling
 
 	restartIfNeeded := func() {
 		if restarts > 0 {
@@ -93,7 +93,7 @@ func (cw *CrawlerWorker) Work(restarts int) {
 			q.Eq("Processed", false),
 		),
 	)
-	err := query.First(&crawling)
+	err := query.First(&cw.crawling)
 
 	if err == storm.ErrNotFound {
 		restartIfNeeded()
@@ -104,14 +104,15 @@ func (cw *CrawlerWorker) Work(restarts int) {
 
 	query = db.Select(
 		q.And(
-			q.Eq("CrawlingID", crawling.ID),
+			q.Eq("CrawlingID", cw.crawling.ID),
 			q.Eq("Status", 0),
 		),
 	)
 
+	// TODO: Move concurrency to crawling
 	var concurrency int
-	if cw.sitemap.Concurrency > 0 && cw.sitemap.Concurrency < 20 {
-		concurrency = cw.sitemap.Concurrency
+	if cw.crawling.Concurrency > 0 && cw.crawling.Concurrency < 20 {
+		concurrency = cw.crawling.Concurrency
 	} else {
 		concurrency = 1
 	}
@@ -126,7 +127,9 @@ Loop:
 		err := query.Limit(concurrency).Find(&pageResults)
 
 		if err != nil {
-			markCrawlingAsDone(db, &crawling)
+
+			// TODO: Re-implement this function
+			markCrawlingAsDone(db, &cw.crawling)
 			break Loop
 		} else {
 			cw.processPageResults(pageResults)
@@ -156,13 +159,13 @@ func (cw *CrawlerWorker) processPageResults(pageResults []store.PageResult) {
 	for _, pageResult := range pageResults {
 		wg.Add(1)
 
-		go func(w *CrawlerWorker, pageResult store.PageResult) {
+		go func(pageResult store.PageResult) {
 			defer wg.Done()
 			err := cw.processPageResult(pageResult)
 			if err != nil {
 				log.Println(err)
 			}
-		}(cw, pageResult)
+		}(pageResult)
 	}
 	wg.Wait()
 }
@@ -173,8 +176,8 @@ func (cw *CrawlerWorker) processPageResult(pageResult store.PageResult) error {
 		return err
 	}
 
-	if cw.sitemap.HasAuth() {
-		req.SetBasicAuth(cw.sitemap.Username, cw.sitemap.Password)
+	for _, header := range cw.crawling.Headers {
+		req.Header.Add(header.Name, header.Value)
 	}
 
 	res, err := cw.client.Do(req)

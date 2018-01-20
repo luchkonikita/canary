@@ -1,7 +1,9 @@
 package workers
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -17,17 +19,25 @@ func TestCrawlerWorkerWork(t *testing.T) {
 	defer db.Close()
 
 	// Mock server
-	server := ts.NewServer("Yay", http.StatusGone)
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Token") == "CorrectToken" {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprintln(w, "Yay")
+			} else {
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprintln(w, "Noo")
+			}
+		}),
+	)
 	defer server.Close()
 
 	// Create entities
 	var pageResults []store.PageResult
 
 	sitemap := store.Sitemap{
-		Name:     "The name",
-		URL:      "http://example.com/sitemap.xml",
-		Username: "USER",
-		Password: "PASSWORD",
+		Name: "The name",
+		URL:  "http://example.com/sitemap.xml",
 	}
 
 	err := db.Save(&sitemap)
@@ -40,6 +50,9 @@ func TestCrawlerWorkerWork(t *testing.T) {
 
 	crawling := store.Crawling{
 		SitemapID: 1,
+		Headers: []store.CrawlingHeader{
+			store.CrawlingHeader{Name: "Token", Value: "CorrectToken"},
+		},
 	}
 	err = db.Save(&crawling)
 	ts.Assert(t, err == nil, "Expected to create a crawling")
@@ -54,7 +67,7 @@ func TestCrawlerWorkerWork(t *testing.T) {
 	NewCrawlerWorker(db, sitemap).Work(3)
 
 	db.All(&pageResults)
-	ts.Assert(t, pageResults[0].Status == 410, "Expected to request the page and store the result")
+	ts.Assert(t, pageResults[0].Status == 200, "Expected to request the page and store the result")
 
 	db.One("ID", 1, &crawling)
 	ts.Assert(t, crawling.Processed, "Expected to mark crawling as processed")
