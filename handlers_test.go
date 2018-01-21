@@ -10,6 +10,7 @@ import (
 
 	"github.com/asdine/storm"
 	"github.com/julienschmidt/httprouter"
+	"github.com/stretchr/testify/assert"
 )
 
 func requestCase(testFn func(db *storm.DB, router *httprouter.Router)) {
@@ -35,7 +36,7 @@ func TestPing(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
 		res := testRequest(router, "GET", "/", url.Values{}).Body.String()
 
-		Assert(t, ContainsJSON(res, "alive", "true"), "Expected response to contain server status")
+		assert.Contains(t, res, "\"alive\":true")
 	})
 }
 
@@ -45,12 +46,12 @@ func TestGetCrawlings(t *testing.T) {
 		db.Save(&Crawling{URL: "http://example.com/sitemap-2.xml", Processed: true})
 
 		res := testRequest(router, "GET", "/crawlings", url.Values{"url": {"http://example.com/sitemap-1.xml"}}).Body.String()
-		Assert(t, ContainsJSON(res, "ID", "1"), "Expected response to contain only first crawling")
-		Assert(t, !ContainsJSON(res, "ID", "2"), "Expected response to contain only first crawling")
+		assert.Contains(t, res, "\"ID\":1")
+		assert.NotContains(t, res, "\"ID\":2")
 
 		res = testRequest(router, "GET", "/crawlings", url.Values{"processed": {"true"}}).Body.String()
-		Assert(t, !ContainsJSON(res, "ID", "1"), "Expected response to contain only second crawling")
-		Assert(t, ContainsJSON(res, "ID", "2"), "Expected response to contain only second crawling")
+		assert.Contains(t, res, "\"ID\":2")
+		assert.NotContains(t, res, "\"ID\":1")
 	})
 }
 
@@ -67,44 +68,43 @@ func TestCreateCrawling(t *testing.T) {
 		)
 		defer sitemapServer.Close()
 
-		Assert(t, dbContains(db, &Crawling{}, 0), "Expected to DB to have 0 crawlings")
-		Assert(t, dbContains(db, &PageResult{}, 0), "Expected to DB to have 0 page results")
+		assert.True(t, dbContains(db, &Crawling{}, 0))
+		assert.True(t, dbContains(db, &PageResult{}, 0))
 
 		rr := testRequest(router, "POST", "/crawlings", url.Values{})
-		Assert(t, rr.Code == 400, "Expected to have 400 response")
+		assert.Equal(t, rr.Code, 400)
 
 		rr = testRequest(router, "POST", "/crawlings", url.Values{"url": {"NO"}, "concurrency": {"1"}})
-		Assert(t, rr.Code == 400, "Expected to have 400 response when URL is broken")
+		assert.Equal(t, rr.Code, 400)
 
 		rr = testRequest(router, "POST", "/crawlings", url.Values{"url": {sitemapServer.URL}, "concurrency": {"1"}, "headers.0.name": {"Token"}, "headers.0.value": {"CorrectToken"}})
-		Assert(t, rr.Code == 200, "Expected to have 200 response when URL is fine")
+		assert.Equal(t, rr.Code, 200)
 
 		var crawling Crawling
 		var pageResults []PageResult
 		db.One("URL", sitemapServer.URL, &crawling)
 		db.All(&pageResults)
 
-		Assert(t, crawling.Processed == false, "Expected to create a crawling with processed as false")
-		Assert(t, crawling.Headers[0].Name == "Token" && crawling.Headers[0].Value == "CorrectToken", "Expected to save crawling header")
-		Assert(t, pageResults[0].CrawlingID == crawling.ID, "Expected to create first page result")
-		Assert(t, pageResults[1].CrawlingID == crawling.ID, "Expected to create second page result")
+		assert.Equal(t, crawling.Processed, false)
+		assert.Equal(t, crawling.Headers[0].Name, "Token")
+		assert.Equal(t, crawling.Headers[0].Value, "CorrectToken")
+		assert.Equal(t, pageResults[0].CrawlingID, crawling.ID)
+		assert.Equal(t, pageResults[1].CrawlingID, crawling.ID)
 	})
 }
 
 func TestDeleteCrawling(t *testing.T) {
 	requestCase(func(db *storm.DB, router *httprouter.Router) {
 		db.Save(&Crawling{URL: "http://example.com/sitemap.xml", Processed: false, CreatedAt: time.Now()})
-		Assert(t, dbContains(db, &Crawling{}, 1), "Expected to DB to have 1 crawling")
+		assert.True(t, dbContains(db, &Crawling{}, 1))
 
 		rr := testRequest(router, "DELETE", "/crawlings/2", url.Values{})
-		Assert(t, rr.Code == 400, "Expected response to have 404 status")
-
-		Assert(t, dbContains(db, &Crawling{}, 1), "Expected to DB to have 1 crawling")
+		assert.Equal(t, rr.Code, 400)
+		assert.True(t, dbContains(db, &Crawling{}, 1))
 
 		rr = testRequest(router, "DELETE", "/crawlings/1", url.Values{})
-		Assert(t, rr.Code == 200, "Expected response to have 200 status")
-
-		Assert(t, dbContains(db, &Crawling{}, 0), "Expected to delete a crawling")
+		assert.Equal(t, rr.Code, 200)
+		assert.True(t, dbContains(db, &Crawling{}, 0))
 	})
 }
 
@@ -115,18 +115,18 @@ func TestGetPageResults(t *testing.T) {
 		db.Save(&PageResult{CrawlingID: 3, URL: "/third", Status: 500})
 
 		res := testRequest(router, "GET", "/page_results", url.Values{"crawling_id": {"1"}}).Body.String()
-		Assert(t, ContainsJSON(res, "ID", "1"), "Expected to return only first page result")
-		Assert(t, !ContainsJSON(res, "ID", "2"), "Expected to return only first page result")
-		Assert(t, !ContainsJSON(res, "ID", "3"), "Expected to return only first page result")
+		assert.Contains(t, res, "\"ID\":1")
+		assert.NotContains(t, res, "\"ID\":2")
+		assert.NotContains(t, res, "\"ID\":3")
 
 		res = testRequest(router, "GET", "/page_results", url.Values{"status": {"404"}}).Body.String()
-		Assert(t, !ContainsJSON(res, "ID", "1"), "Expected to return only second page result")
-		Assert(t, ContainsJSON(res, "ID", "2"), "Expected to return only second page result")
-		Assert(t, !ContainsJSON(res, "ID", "3"), "Expected to return only second page result")
+		assert.NotContains(t, res, "\"ID\":1")
+		assert.Contains(t, res, "\"ID\":2")
+		assert.NotContains(t, res, "\"ID\":3")
 
 		res = testRequest(router, "GET", "/page_results", url.Values{"url": {"third"}}).Body.String()
-		Assert(t, !ContainsJSON(res, "ID", "1"), "Expected to return only third page result")
-		Assert(t, !ContainsJSON(res, "ID", "2"), "Expected to return only third page result")
-		Assert(t, ContainsJSON(res, "ID", "3"), "Expected to return only third page result")
+		assert.NotContains(t, res, "\"ID\":1")
+		assert.NotContains(t, res, "\"ID\":2")
+		assert.Contains(t, res, "\"ID\":3")
 	})
 }

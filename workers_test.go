@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCrawlerWorkerWork(t *testing.T) {
@@ -41,14 +43,14 @@ func TestCrawlerWorkerWork(t *testing.T) {
 		},
 	}
 	err := db.Save(&crawling)
-	Assert(t, err == nil, "Expected to create a crawling")
+	assert.Nil(t, err)
 
 	pageResult := PageResult{
 		CrawlingID: 1,
 		URL:        server.URL,
 	}
 	err = db.Save(&pageResult)
-	Assert(t, err == nil, "Expected to create a page result")
+	assert.Nil(t, err)
 
 	worker := &CrawlerWorker{
 		db:       db,
@@ -58,8 +60,8 @@ func TestCrawlerWorkerWork(t *testing.T) {
 	worker.Work()
 
 	db.All(&pageResults)
-	Assert(t, pageResults[0].Status == 200, "Expected to request the page and store the result")
+	assert.Equal(t, pageResults[0].Status, 200)
 
 	db.One("ID", 1, &crawling)
-	Assert(t, crawling.Processed, "Expected to mark crawling as processed")
+	assert.Equal(t, crawling.Processed, true)
 }
