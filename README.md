@@ -48,37 +48,9 @@ Usage examples:
       {}
       Pings the server.
 
-- GET /sitemaps
-	{}
-	Returns a list of sitemaps.
-
-- POST /sitemaps
-	{
-		"name": "Some name",
-		"url": "http://someurl.com",
-		"concurrency": 10,
-		"username": "Username when sitemap requires basic auth",
-		"password": "Password when sitemap requires basic auth",
-	}
-	Adds a new sitemap.
-
-- PATCH /sitemaps/1
-	{
-		"name": "Some name",
-		"url": "http://someurl.com",
-		"concurrency": 10,
-		"username": "Username when sitemap requires basic auth",
-		"password": "Password when sitemap requires basic auth",
-	}
-	Updates a sitemap.
-
-- DELETE /sitemaps/1
-	{}
-	Updates a sitemap.
-
 - GET /crawlings
 	{
-		"sitemap_id": 1,
+		"url": "http://example.com/sitemap.xml",
 		"processed": "true",
 		"limit": 10,
 		"offset": 0,
@@ -87,7 +59,8 @@ Usage examples:
 
 - POST /crawlings
 	{
-		"sitemap_id": 1
+		"url": "http://example.com/sitemap.xml",
+		"concurrency": 10
 	}
 	Creates a new crawling and starts it.
 
@@ -103,7 +76,7 @@ Usage examples:
 		"limit": 10,
 		"offset": 0,
 	}
-	Returns a list of page resul
+	Returns a list of page results.
 ```
 
 ## Testing

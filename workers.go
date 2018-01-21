@@ -28,7 +28,7 @@ func (cw *CrawlerWorker) String() string {
 	return fmt.Sprintf("[Crawler worker %d]", cw.crawling.ID)
 }
 
-// StartWorkers - starts a pool of workers and updates it when new sitemaps are added.
+// StartWorkers - starts a pool of workers and updates it when new crawlings are started.
 func StartWorkers(db *storm.DB) {
 	pool := make(map[int]bool)
 
@@ -51,7 +51,7 @@ func StartWorkers(db *storm.DB) {
 			}
 		}
 
-		// Wait and query again in case new sitemaps were added.
+		// Wait and query again in case new crawlings were added.
 		time.Sleep(time.Minute)
 	}
 }
