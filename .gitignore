@@ -1,7 +1,7 @@
 .vscode
 debug
 storage.db
-test_support/test_storage.db
+test_storage.db
 debug.test
 canary
 canary.db
