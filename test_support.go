@@ -1,4 +1,4 @@
-package test_support
+package main
 
 import (
 	"fmt"
@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-const SitemapXML = `
+// TestSitemapXML - a fixture containing sitemap XML.
+const TestSitemapXML = `
 	<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 	  <url>
 		<loc>http://google.com/maps</loc>
@@ -22,11 +23,6 @@ const SitemapXML = `
 	  </url>
 	</urlset>
 `
-
-func GetTestDBName() string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Dir(filename) + "/test_storage.db"
-}
 
 func Assert(tb testing.TB, condition bool, msg string, v ...interface{}) {
 	if !condition {

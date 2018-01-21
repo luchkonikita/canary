@@ -7,7 +7,7 @@
 Canary is a microservice for testing your websites.
 It can be deployed as a single binary and used via HTTP API.
 You can add your sitemap and the application will request all the
-pages and store results. With this done, you can detect any broken
+pages and store resul With this done, you can detect any broken
 resources on your website.
 
 The service uses [Bolt](https://github.com/boltdb/bolt) as a storage and stores all
@@ -103,7 +103,7 @@ Usage examples:
 		"limit": 10,
 		"offset": 0,
 	}
-	Returns a list of page results.
+	Returns a list of page resul
 ```
 
 ## Testing

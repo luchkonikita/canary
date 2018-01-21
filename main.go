@@ -5,11 +5,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/rs/cors"
-
-	"github.com/luchkonikita/canary/handlers"
-	"github.com/luchkonikita/canary/store"
-	"github.com/luchkonikita/canary/workers"
 )
 
 func main() {
@@ -20,23 +17,27 @@ func main() {
 	var origin = flag.String("origin", "http://localhost:8080", "origin to allow cross-origin requests")
 	flag.Parse()
 
-	db := store.NewDB(*dbFile, false)
+	db := NewDB(*dbFile, false)
 	defer db.Close()
 
-	go workers.Start(db)
+	go StartWorkers(db)
 
 	log.Printf("Listening on the port: %s", *port)
-	router := handlers.NewRouter(db)
+	router := NewRouter(db)
 
-	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{*origin},
-		AllowCredentials: true,
-		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE"},
-	})
-	handler := corsMiddleware.Handler(router)
+	handler := corsMiddleware(router, []string{*origin})
 	handler = basicAuthMiddleware(handler, *username, *password)
 
 	http.ListenAndServe(":"+*port, handler)
+}
+
+func corsMiddleware(r *httprouter.Router, origins []string) http.Handler {
+	corsMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   origins,
+		AllowCredentials: true,
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE"},
+	})
+	return corsMiddleware.Handler(r)
 }
 
 func basicAuthMiddleware(next http.Handler, username, password string) http.Handler {
