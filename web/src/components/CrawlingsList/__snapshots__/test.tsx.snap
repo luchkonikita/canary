@@ -1,0 +1,136 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CrawlingsList renders 1`] = `
+<Pane
+  display="flex"
+  flexDirection="column"
+  height="100%"
+  padding={24}
+>
+  <Pane
+    marginX="auto"
+    width={660}
+  >
+    <Pane
+      alignItems="center"
+      display="flex"
+      justifyContent="space-between"
+      marginBottom={16}
+      padding={16}
+    >
+      <Text
+        color="default"
+        fontFamily="ui"
+        size={500}
+        textStyles={
+          Object {
+            "100": Object {
+              "fontSize": "10px",
+              "fontWeight": 400,
+              "lineHeight": "16px",
+            },
+            "200": Object {
+              "fontSize": "11px",
+              "fontWeight": 400,
+              "lineHeight": "16px",
+            },
+            "300": Object {
+              "fontSize": "12px",
+              "fontWeight": 400,
+              "letterSpacing": "0",
+              "lineHeight": "16px",
+            },
+            "400": Object {
+              "fontSize": "14px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.05px",
+              "lineHeight": "22px",
+            },
+            "500": Object {
+              "fontSize": "16px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.05px",
+              "lineHeight": "22px",
+            },
+            "600": Object {
+              "fontSize": "18px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.05px",
+              "lineHeight": "24px",
+            },
+            "700": Object {
+              "fontSize": "20px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.05px",
+              "lineHeight": "24px",
+            },
+            "800": Object {
+              "fontSize": "24px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.2px",
+              "lineHeight": "28px",
+            },
+            "900": Object {
+              "fontSize": "29px",
+              "fontWeight": 400,
+              "letterSpacing": "-0.2px",
+              "lineHeight": "32px",
+            },
+          }
+        }
+        textUppercaseStyles={
+          Object {
+            "100": Object {
+              "fontSize": "10px",
+              "fontWeight": 400,
+              "letterSpacing": "1px",
+              "lineHeight": "16px",
+              "textTransform": "uppercase",
+            },
+            "200": Object {
+              "fontSize": "11px",
+              "fontWeight": 400,
+              "letterSpacing": "1px",
+              "lineHeight": "16px",
+              "textTransform": "uppercase",
+            },
+          }
+        }
+      >
+        Your Crawlings
+      </Text>
+      <Button
+        appearance="green"
+        height={32}
+        iconAfterAim="none"
+        iconBeforeAim="none"
+        isActive={false}
+        onClick={[Function]}
+        paddingBottom={0}
+        paddingTop={0}
+      >
+        Create Crawling
+      </Button>
+    </Pane>
+    <Pane
+      backgroundColor="#fafbfc"
+      borderColor="#d5dee6"
+      borderStyle="solid"
+      borderWidth={1}
+      minHeight={72}
+    >
+      <Pane
+        borderBottomColor="#d5dee6"
+        borderBottomStyle="solid"
+        borderBottomWidth={0}
+        key="1"
+        minHeight={72}
+      >
+        <Connect(Crawling)
+          crawlingId={1}
+        />
+      </Pane>
+    </Pane>
+  </Pane>
+</Pane>
+`;

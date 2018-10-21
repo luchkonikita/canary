@@ -15,3 +15,9 @@ const TestSitemapXML = `
 	  </url>
 	</urlset>
 `
+
+func mockApp() *application {
+	app := newApplication("test_storage.db")
+	app.db.Drop(&crawling{})
+	return app
+}

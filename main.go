@@ -4,34 +4,79 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"time"
 
-	"github.com/julienschmidt/httprouter"
+	"github.com/asdine/storm"
+	"github.com/gorilla/mux"
+
 	"github.com/rs/cors"
 )
+
+type application struct {
+	db     *storm.DB
+	router *mux.Router
+}
+
+// Crawling - a single crawling action, with page results related to it
+type crawling struct {
+	ID          int             `schema:"-" storm:"id,increment"`
+	CreatedAt   time.Time       `schema:"-" storm:"index"`
+	URL         string          `schema:"url" storm:"index"`
+	Processed   bool            `schema:"-" storm:"index"`
+	Concurrency int             `schema:"concurrency"`
+	Headers     []requestHeader `schema:"headers"`
+	PageResults []pageResult
+}
+
+type requestHeader struct {
+	Name  string `schema:"name"`
+	Value string `schema:"value"`
+}
+
+// PageResult - an entity representing a particular requested page
+type pageResult struct {
+	URL    string `json:"url"`
+	Status int    `json:"status"`
+}
 
 func main() {
 	var dbFile = flag.String("db", "canary.db", "database file")
 	var port = flag.String("port", "4000", "port to listen on")
 	var username = flag.String("username", "", "username for basic auth (if needed)")
 	var password = flag.String("password", "", "password for basic auth (if needed)")
-	var origin = flag.String("origin", "http://localhost:8080", "origin to allow cross-origin requests")
+	var origin = flag.String("origin", "http://localhost:4000", "origin to allow cross-origin requests")
 	flag.Parse()
 
-	db := NewDB(*dbFile, false)
-	defer db.Close()
+	app := newApplication(*dbFile)
+	defer app.db.Close()
 
-	go StartWorkers(db)
+	app.useRoutes()
+	app.serveAssets()
+
+	go app.runWorkers()
 
 	log.Printf("Listening on the port: %s", *port)
-	router := NewRouter(db)
 
-	handler := corsMiddleware(router, []string{*origin})
+	handler := corsMiddleware(app.router, []string{*origin})
 	handler = basicAuthMiddleware(handler, *username, *password)
 
 	http.ListenAndServe(":"+*port, handler)
 }
 
-func corsMiddleware(r *httprouter.Router, origins []string) http.Handler {
+func newApplication(dbFilename string) *application {
+	db, err := storm.Open(dbFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	router := mux.NewRouter()
+	app := &application{
+		db:     db,
+		router: router,
+	}
+	return app
+}
+
+func corsMiddleware(r *mux.Router, origins []string) http.Handler {
 	corsMiddleware := cors.New(cors.Options{
 		AllowedOrigins:   origins,
 		AllowCredentials: true,

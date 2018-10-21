@@ -1,0 +1,231 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Crawling renders 1`] = `
+<Pane>
+  <Pane
+    alignItems="center"
+    display="flex"
+    justifyContent="space-between"
+    padding={16}
+  >
+    <Pane
+      alignItems="center"
+      display="flex"
+    >
+      <Pane
+        alignItems="center"
+        display="flex"
+        height={20}
+        justifyContent="center"
+        width={20}
+      >
+        <StatusIcon
+          type="none"
+        />
+      </Pane>
+      <Pane
+        display="flex"
+        flexDirection="column"
+        marginLeft={16}
+      >
+        <Text
+          color="default"
+          cursor="pointer"
+          fontFamily="ui"
+          fontWeight={500}
+          onClick={[Function]}
+          size={500}
+          textStyles={
+            Object {
+              "100": Object {
+                "fontSize": "10px",
+                "fontWeight": 400,
+                "lineHeight": "16px",
+              },
+              "200": Object {
+                "fontSize": "11px",
+                "fontWeight": 400,
+                "lineHeight": "16px",
+              },
+              "300": Object {
+                "fontSize": "12px",
+                "fontWeight": 400,
+                "letterSpacing": "0",
+                "lineHeight": "16px",
+              },
+              "400": Object {
+                "fontSize": "14px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "22px",
+              },
+              "500": Object {
+                "fontSize": "16px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "22px",
+              },
+              "600": Object {
+                "fontSize": "18px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "24px",
+              },
+              "700": Object {
+                "fontSize": "20px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "24px",
+              },
+              "800": Object {
+                "fontSize": "24px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.2px",
+                "lineHeight": "28px",
+              },
+              "900": Object {
+                "fontSize": "29px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.2px",
+                "lineHeight": "32px",
+              },
+            }
+          }
+          textUppercaseStyles={
+            Object {
+              "100": Object {
+                "fontSize": "10px",
+                "fontWeight": 400,
+                "letterSpacing": "1px",
+                "lineHeight": "16px",
+                "textTransform": "uppercase",
+              },
+              "200": Object {
+                "fontSize": "11px",
+                "fontWeight": 400,
+                "letterSpacing": "1px",
+                "lineHeight": "16px",
+                "textTransform": "uppercase",
+              },
+            }
+          }
+          title="Click to copy the URL"
+        >
+          http://example.com/sitemap.xml
+        </Text>
+        <Text
+          color="default"
+          fontFamily="ui"
+          marginTop={2}
+          size={300}
+          textStyles={
+            Object {
+              "100": Object {
+                "fontSize": "10px",
+                "fontWeight": 400,
+                "lineHeight": "16px",
+              },
+              "200": Object {
+                "fontSize": "11px",
+                "fontWeight": 400,
+                "lineHeight": "16px",
+              },
+              "300": Object {
+                "fontSize": "12px",
+                "fontWeight": 400,
+                "letterSpacing": "0",
+                "lineHeight": "16px",
+              },
+              "400": Object {
+                "fontSize": "14px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "22px",
+              },
+              "500": Object {
+                "fontSize": "16px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "22px",
+              },
+              "600": Object {
+                "fontSize": "18px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "24px",
+              },
+              "700": Object {
+                "fontSize": "20px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.05px",
+                "lineHeight": "24px",
+              },
+              "800": Object {
+                "fontSize": "24px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.2px",
+                "lineHeight": "28px",
+              },
+              "900": Object {
+                "fontSize": "29px",
+                "fontWeight": 400,
+                "letterSpacing": "-0.2px",
+                "lineHeight": "32px",
+              },
+            }
+          }
+          textUppercaseStyles={
+            Object {
+              "100": Object {
+                "fontSize": "10px",
+                "fontWeight": 400,
+                "letterSpacing": "1px",
+                "lineHeight": "16px",
+                "textTransform": "uppercase",
+              },
+              "200": Object {
+                "fontSize": "11px",
+                "fontWeight": 400,
+                "letterSpacing": "1px",
+                "lineHeight": "16px",
+                "textTransform": "uppercase",
+              },
+            }
+          }
+        >
+          21:06 / October 22
+        </Text>
+      </Pane>
+    </Pane>
+    <Pane
+      display="flex"
+    >
+      <Button
+        appearance="default"
+        height={32}
+        iconAfterAim="none"
+        iconBeforeAim="none"
+        isActive={false}
+        onClick={[Function]}
+        paddingBottom={0}
+        paddingTop={0}
+      >
+        View Details
+      </Button>
+      <Button
+        appearance="default"
+        height={32}
+        iconAfterAim="none"
+        iconBeforeAim="none"
+        isActive={false}
+        marginLeft={16}
+        onClick={[Function]}
+        paddingBottom={0}
+        paddingTop={0}
+      >
+        Delete
+      </Button>
+    </Pane>
+  </Pane>
+</Pane>
+`;

@@ -5,11 +5,10 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/asdine/storm"
 	"github.com/asdine/storm/q"
+	"github.com/remeh/sizedwaitgroup"
 )
 
 var (
@@ -18,36 +17,21 @@ var (
 	workRestarts = int(math.Pow(10, 6))
 )
 
-// CrawlerWorker - the worker to run crawlings
-type CrawlerWorker struct {
-	crawling Crawling
-	db       *storm.DB
-}
-
-func (cw *CrawlerWorker) String() string {
-	return fmt.Sprintf("[Crawler worker %d]", cw.crawling.ID)
-}
-
-// StartWorkers - starts a pool of workers and updates it when new crawlings are started.
-func StartWorkers(db *storm.DB) {
+func (app *application) runWorkers() {
 	pool := make(map[int]bool)
 
 	for {
 		log.Println("[Main jobs thread]: Loading pending crawlings")
-		var crawlings []Crawling
-		query := db.Select(q.Eq("Processed", false))
-		query.Find(&crawlings)
+		var crs []crawling
+		query := app.db.Select(q.Eq("Processed", false))
+		query.Find(&crs)
 
-		for _, crawling := range crawlings {
-			if pool[crawling.ID] {
+		for _, cr := range crs {
+			if pool[cr.ID] {
 				continue
 			} else {
-				cw := &CrawlerWorker{
-					db:       db,
-					crawling: crawling,
-				}
-				pool[crawling.ID] = true
-				go cw.Work()
+				pool[cr.ID] = true
+				go app.processCrawling(cr)
 			}
 		}
 
@@ -56,90 +40,51 @@ func StartWorkers(db *storm.DB) {
 	}
 }
 
-// Work - retrieves scheduled crawlings and requests all the related URLs
-// For each request the result is stored in the corresponding PageResult
-// If the crawling is deleted via API the worker will stop the execution
-//
-// Note the `restarts` parameter, providing a flexible API.
-// When called with default value int(math.Pow(10, 6)) the worker will run or ~115 days.
-// With customizable restarts this function is easier to test.
-func (cw *CrawlerWorker) Work() {
-	db := cw.db
+func (app *application) processCrawling(cr crawling) {
+	log.Printf("[Crawler worker %d]: Crawling started \n", cr.ID)
 
-	log.Printf("%s: Crawling started \n", cw)
-
-	query := db.Select(
-		q.And(
-			q.Eq("CrawlingID", cw.crawling.ID),
-			q.Eq("Status", 0),
-		),
-	)
-
-Loop:
+loadLoop:
 	for {
-		var pageResults []PageResult
+		allProcessed := true
+		crawlingExists := true
+		swg := sizedwaitgroup.New(cr.Concurrency)
 
-		// The query is executed in a loop fetching a limited number of records.
-		// Each loaded batch is processed concurrently.
-		// When there are no batches left, crawling is marked as completed.
-		err := query.Limit(cw.crawling.Concurrency).Find(&pageResults)
+		for i := range cr.PageResults {
+			swg.Add()
 
-		if err != nil {
-			cw.markCrawlingAsDone()
-			break Loop
-		} else {
-			cw.processPageResults(pageResults)
+			go func(index int) {
+				defer swg.Done()
+				if cr.PageResults[index].Status == 0 {
+					status, err := requestPage(cr.PageResults[index].URL, cr.Headers)
+					if err != nil {
+						fmt.Println(err)
+						allProcessed = false
+					} else {
+						cr.PageResults[index].Status = status
+						err := app.db.Update(&cr)
+
+						if err != nil {
+							crawlingExists = false
+						}
+					}
+				}
+			}(i)
+		}
+
+		swg.Wait()
+
+		// Crawling was deleted before finishing.
+		if !crawlingExists {
+			log.Printf("[Crawler worker %d]: Crawling interrupted \n", cr.ID)
+			break loadLoop
+		}
+
+		// Crawling finished successfully.
+		if allProcessed {
+			cr.Processed = true
+			app.db.Update(&cr)
+			log.Printf("[Crawler worker %d]: Crawling completed \n", cr.ID)
+			break loadLoop
 		}
 	}
-
-	log.Printf("%s: Crawling completed \n", cw)
-}
-
-// When crawling has 0 pending page results it is marked as done and won't
-// be processed in the future.
-func (cw *CrawlerWorker) markCrawlingAsDone() {
-	crawling := cw.crawling
-	crawling.Processed = true
-	err := cw.db.Update(&crawling)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-// Wrapper around processPageResult to make requests in batches.
-// Spawns each request in a separate goroutine and blocks until all requests resolve.
-func (cw *CrawlerWorker) processPageResults(pageResults []PageResult) {
-	var wg sync.WaitGroup
-
-	for _, pageResult := range pageResults {
-		wg.Add(1)
-
-		go func(pageResult PageResult) {
-			defer wg.Done()
-			err := cw.processPageResult(pageResult)
-			if err != nil {
-				log.Println(err)
-			}
-		}(pageResult)
-	}
-	wg.Wait()
-}
-
-func (cw *CrawlerWorker) processPageResult(pageResult PageResult) error {
-	req, err := http.NewRequest("GET", pageResult.URL, nil)
-	if err != nil {
-		return err
-	}
-
-	for _, header := range cw.crawling.Headers {
-		req.Header.Add(header.Name, header.Value)
-	}
-
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-
-	pageResult.Status = res.StatusCode
-	return cw.db.Update(&pageResult)
 }

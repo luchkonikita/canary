@@ -2,108 +2,159 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
-	"github.com/asdine/storm"
-	"github.com/julienschmidt/httprouter"
+	"github.com/asdine/storm/q"
+	"github.com/gobuffalo/packr"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/schema"
 )
 
-// Handler - a function returning router compatible handler
-type Handler func(db *storm.DB) httprouter.Handle
+var decoder = schema.NewDecoder()
 
-// NewRouter - defines all the routes and corresponding handlers
-func NewRouter(db *storm.DB) *httprouter.Router {
-	router := httprouter.New()
-
-	router.GET("/", Ping)
-
-	// Crawlings
-	router.GET("/crawlings", GetCrawlingsHandler(db))
-	router.POST("/crawlings", CreateCrawlingHandler(db))
-	router.DELETE("/crawlings/:crawlingId", DeleteCrawlingHandler(db))
-
-	// Page results
-	router.GET("/page_results", GetPageResultsHandler(db))
-
-	return router
+func (app *application) useRoutes() {
+	app.router.HandleFunc("/crawlings", app.handleCrawlingsGET()).Methods("GET")
+	app.router.HandleFunc("/crawlings/{id}", app.handleCrawlingGET()).Methods("GET")
+	app.router.HandleFunc("/crawlings", app.handleCrawlingsPOST()).Methods("POST")
+	app.router.HandleFunc("/crawlings/{id}", app.handleCrawlingDELETE()).Methods("DELETE")
+	app.router.HandleFunc("/", app.handleIndex()).Methods("GET")
 }
 
-// Ping - return 200 status and some usage instructions
-func Ping(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	renderOK(rw, map[string]interface{}{
-		"alive": true,
-	})
+func (app *application) serveAssets() {
+	staticFilesBox := packr.NewBox("web/dist")
+	app.router.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(staticFilesBox)))
 }
 
-// GetCrawlings - returns a list of crawlings with results via `GET /crawlings`
-func GetCrawlingsHandler(db *storm.DB) httprouter.Handle {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		crawlings := NewCrawlingsFilter(r).Query(db)
-		renderOK(rw, crawlings)
+func (app *application) handleIndex() http.HandlerFunc {
+	staticFilesBox := packr.NewBox("web/dist")
+	indexTemplate := staticFilesBox.String("index.html")
+	return func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(rw, indexTemplate)
 	}
 }
 
-// CreateCrawling - creates a new crawling via `POST /crawlings`
-// Creates PageResult's for each page returned from the sitemap.
-// These results are going to be processed separately by background worker.
-func CreateCrawlingHandler(db *storm.DB) httprouter.Handle {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func (app *application) handleCrawlingsGET() http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		crs := []crawling{}
+
+		query := app.db.Select().OrderBy("CreatedAt").Reverse()
+		query.Find(&crs)
+
+		items := []map[string]interface{}{}
+
+		// Omit nested data for the index request
+		for _, cr := range crs {
+			items = append(items, map[string]interface{}{
+				"id":        cr.ID,
+				"url":       cr.URL,
+				"createdAt": cr.CreatedAt,
+				"processed": cr.Processed,
+			})
+		}
+
+		render(rw, http.StatusOK, items)
+	}
+}
+
+func (app *application) handleCrawlingGET() http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		crawlingID, _ := strconv.Atoi(vars["id"])
+		cr := &crawling{}
+
+		if err := app.db.One("ID", crawlingID, cr); err != nil {
+			render(rw, http.StatusNotFound, err.Error())
+			return
+		}
+		render(rw, http.StatusOK, map[string]interface{}{
+			"id":          cr.ID,
+			"url":         cr.URL,
+			"createdAt":   cr.CreatedAt,
+			"processed":   cr.Processed,
+			"pageResults": cr.PageResults,
+		})
+	}
+}
+
+func (app *application) handleCrawlingsPOST() http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		crawling := &Crawling{}
-		err := CreateCrawling(db, crawling, r)
+		cr := &crawling{}
+		cr.CreatedAt = time.Now()
+		decoder.Decode(cr, r.Form)
+
+		if len(cr.URL) == 0 {
+			render(rw, http.StatusBadRequest, "Crawling should have a valid URL")
+			return
+		}
+
+		if cr.Concurrency == 0 {
+			render(rw, http.StatusBadRequest, "Crawling should have a concurrency bigger than 0")
+			return
+		}
+
+		query := app.db.Select(q.And(
+			q.Eq("URL", cr.URL),
+			q.Eq("Processed", false),
+		))
+
+		if query.First(&crawling{}) == nil {
+			render(rw, http.StatusBadRequest, "Current crawling is in progress, cannot create another")
+			return
+		}
+
+		urls, err := requestSitemap(cr.URL, cr.Headers)
 
 		if err != nil {
-			renderBadRequest(rw, err)
+			render(rw, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		for _, url := range urls {
+			cr.PageResults = append(cr.PageResults, pageResult{
+				URL: url,
+			})
+		}
+
+		if err := app.db.Save(cr); err != nil {
+			render(rw, http.StatusBadRequest, err.Error())
 		} else {
-			renderOK(rw, map[string]interface{}{
-				"status":   "Created",
-				"crawling": crawling,
+			render(rw, http.StatusCreated, map[string]interface{}{
+				"id":        cr.ID,
+				"url":       cr.URL,
+				"createdAt": cr.CreatedAt,
+				"processed": cr.Processed,
 			})
 		}
 	}
 }
 
-// DeleteCrawling - deletes a crawling via `DELETE /crawlings/crawlingId`
-// If the crawling is running, this will stop it.
-func DeleteCrawlingHandler(db *storm.DB) httprouter.Handle {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		crawlingID, _ := strconv.Atoi(p.ByName("crawlingId"))
-		err := DeleteCrawling(db, crawlingID)
+func (app *application) handleCrawlingDELETE() http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		crID, _ := strconv.Atoi(vars["id"])
 
-		if err != nil {
-			renderBadRequest(rw, err)
+		var cr crawling
+
+		if err := app.db.One("ID", crID, &cr); err != nil {
+			render(rw, http.StatusNotFound, err.Error())
+			return
+		}
+
+		if err := app.db.DeleteStruct(&cr); err != nil {
+			render(rw, http.StatusBadRequest, err.Error())
 		} else {
-			renderOK(rw, map[string]string{
-				"status": "Deleted",
-			})
+			render(rw, http.StatusOK, nil)
 		}
 	}
 }
 
-// GetPageResults - loads page results for a crawling via `GET /page_results`
-func GetPageResultsHandler(db *storm.DB) httprouter.Handle {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
-		pageResults := NewPageResultsFilter(r).Query(db)
-		renderOK(rw, pageResults)
-	}
-}
-
-func renderOK(rw http.ResponseWriter, data interface{}) {
-	setHeaders(rw)
-	rw.WriteHeader(http.StatusOK)
-	json.NewEncoder(rw).Encode(data)
-}
-
-func renderBadRequest(rw http.ResponseWriter, err error) {
-	setHeaders(rw)
-	rw.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(rw).Encode(map[string]string{
-		"status": "Bad request",
-		"error":  err.Error(),
-	})
-}
-
-func setHeaders(rw http.ResponseWriter) {
+func render(rw http.ResponseWriter, status int, data interface{}) {
 	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(status)
+	json.NewEncoder(rw).Encode(data)
 }

@@ -6,3 +6,5 @@ debug.test
 canary
 canary.db
 .DS_Store
+web/node_modules
+web/dist

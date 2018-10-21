@@ -5,17 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCrawlerWorkerWork(t *testing.T) {
-	workTimeout = time.Millisecond
-
-	// Mock database
-	db := NewDB("test_storage.db", true)
-	defer db.Close()
+func TestAppProcessCrawling(t *testing.T) {
+	app := mockApp()
+	defer app.db.Close()
 
 	// Mock server
 	server := httptest.NewServer(
@@ -31,37 +27,25 @@ func TestCrawlerWorkerWork(t *testing.T) {
 	)
 	defer server.Close()
 
-	// Create entities
-	var pageResults []PageResult
-
-	crawling := Crawling{
-		URL:         server.URL,
+	cr := crawling{
+		URL:         "whatever",
 		Processed:   false,
 		Concurrency: 3,
-		Headers: []RequestHeader{
-			RequestHeader{Name: "Token", Value: "CorrectToken"},
+		Headers: []requestHeader{
+			requestHeader{Name: "Token", Value: "CorrectToken"},
+		},
+		PageResults: []pageResult{
+			pageResult{
+				URL: server.URL,
+			},
 		},
 	}
-	err := db.Save(&crawling)
+
+	err := app.db.Save(&cr)
 	assert.Nil(t, err)
 
-	pageResult := PageResult{
-		CrawlingID: 1,
-		URL:        server.URL,
-	}
-	err = db.Save(&pageResult)
-	assert.Nil(t, err)
+	app.processCrawling(cr)
+	app.db.One("ID", 1, &cr)
 
-	worker := &CrawlerWorker{
-		db:       db,
-		crawling: crawling,
-	}
-
-	worker.Work()
-
-	db.All(&pageResults)
-	assert.Equal(t, pageResults[0].Status, 200)
-
-	db.One("ID", 1, &crawling)
-	assert.Equal(t, crawling.Processed, true)
+	assert.Equal(t, cr.PageResults[0].Status, 200)
 }
