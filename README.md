@@ -73,6 +73,10 @@ Run `go test ./...` from the project root.
 - [x] Add ETA to the crawling card.
 - [x] Show report summary and details.
 - [x] Handle the hanged worker when the connectivity goes down.
+- [ ] Split `Crawling` UI component into smaller chunks.
+- [x] Do better JSON serialization.
 - [ ] Introduce timeout option for the crawling.
-- [ ] Update README.
+- [ ] Use `dep`.
 - [ ] Store pages HTML.
+- [ ] Store time for requests and show some statistics.
+- [ ] Update README.

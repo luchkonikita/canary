@@ -44,19 +44,7 @@ func (app *application) handleCrawlingsGET() http.HandlerFunc {
 		query := app.db.Select().OrderBy("CreatedAt").Reverse()
 		query.Find(&crs)
 
-		items := []map[string]interface{}{}
-
-		// Omit nested data for the index request
-		for _, cr := range crs {
-			items = append(items, map[string]interface{}{
-				"id":        cr.ID,
-				"url":       cr.URL,
-				"createdAt": cr.CreatedAt,
-				"processed": cr.Processed,
-			})
-		}
-
-		render(rw, http.StatusOK, items)
+		render(rw, http.StatusOK, serializeCrawlings(crs, serializerFlags{SkipNested: true}))
 	}
 }
 
@@ -70,13 +58,8 @@ func (app *application) handleCrawlingGET() http.HandlerFunc {
 			render(rw, http.StatusNotFound, err.Error())
 			return
 		}
-		render(rw, http.StatusOK, map[string]interface{}{
-			"id":          cr.ID,
-			"url":         cr.URL,
-			"createdAt":   cr.CreatedAt,
-			"processed":   cr.Processed,
-			"pageResults": cr.PageResults,
-		})
+
+		render(rw, http.StatusOK, cr.Serialize(serializerFlags{SkipNested: false}))
 	}
 }
 
@@ -123,12 +106,7 @@ func (app *application) handleCrawlingsPOST() http.HandlerFunc {
 		if err := app.db.Save(cr); err != nil {
 			render(rw, http.StatusBadRequest, err.Error())
 		} else {
-			render(rw, http.StatusCreated, map[string]interface{}{
-				"id":        cr.ID,
-				"url":       cr.URL,
-				"createdAt": cr.CreatedAt,
-				"processed": cr.Processed,
-			})
+			render(rw, http.StatusCreated, cr.Serialize(serializerFlags{SkipNested: false}))
 		}
 	}
 }
