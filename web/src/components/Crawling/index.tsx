@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Pane, Button, Text, Link, Strong, colors } from 'evergreen-ui'
+import { Pane, Button, Text, Link, Strong, toaster, colors } from 'evergreen-ui'
 import { parse, format } from 'date-fns'
 import { connect } from 'react-redux'
 import { bindActionCreators } from 'redux'
@@ -139,7 +139,10 @@ export class Crawling extends React.Component<Props, State> {
   }
 
   private copyUrl(url: string) {
-    (window.navigator as any).clipboard.writeText(url).catch(console.error)
+    (window.navigator as any).clipboard
+      .writeText(url)
+      .then(() => toaster.success('URL successfully copied to the clipboard', {duration: 1}))
+      .catch(() => toaster.danger('Cannot copy the URL', {duration: 1}))
   }
 
   private requestDelete = () => {
