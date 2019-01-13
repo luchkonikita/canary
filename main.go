@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	"github.com/asdine/storm"
 	"github.com/gorilla/mux"
-
 	"github.com/rs/cors"
 )
 
@@ -59,6 +59,7 @@ func main() {
 
 	handler := corsMiddleware(app.router, []string{*origin})
 	handler = basicAuthMiddleware(handler, *username, *password)
+	handler = gziphandler.GzipHandler(handler)
 
 	http.ListenAndServe(":"+*port, handler)
 }

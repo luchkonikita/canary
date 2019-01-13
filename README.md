@@ -76,7 +76,8 @@ Run `go test ./...` from the project root.
 - [ ] Split `Crawling` UI component into smaller chunks.
 - [x] Do better JSON serialization.
 - [ ] Introduce timeout option for the crawling.
-- [ ] Use `dep`.
+- [x] Use `dep`.
+- [x] Compress responses.
 - [ ] Store pages HTML.
 - [ ] Store time for requests and show some statistics.
 - [ ] Update README.

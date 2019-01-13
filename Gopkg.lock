@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:0803645e1f57fb5271a6edc7570b9ea59bac2e5de67957075a43f3d74c8dbd97"
+  name = "github.com/NYTimes/gziphandler"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2600fb119af974220d3916a5916d6e31176aac1b"
+  version = "v1.0.1"
+
+[[projects]]
   digest = "1:97f8392a94d45a67691bfc224ee4365a83864467ca5a04bd5017be293e1b4391"
   name = "github.com/asdine/storm"
   packages = [
@@ -124,6 +132,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/NYTimes/gziphandler",
     "github.com/asdine/storm",
     "github.com/asdine/storm/q",
     "github.com/gobuffalo/packr",

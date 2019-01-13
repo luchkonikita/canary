@@ -19,7 +19,10 @@ module.exports = {
       {
         test: /\.(js|jsx)?$/,
         exclude: /node_modules/,
-        use: 'babel-loader'
+        loader: 'babel-loader',
+        query: {
+          plugins: ['lodash']
+        }
       },
       {
         test: /\.tsx?$/,
